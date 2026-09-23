@@ -1,5 +1,6 @@
 package nf.durga.model;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -25,4 +26,12 @@ public class Task {
     private TaskSource source;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    /** false par défaut : géré par TaskService à la création. */
+    private Boolean archived;
+    private LocalDate dueDate;
+    private String tags;
+
+    /** 1 = critique, 2 = élevée, 3 = normale, 4 = faible. */
+    private Integer priority;
 }

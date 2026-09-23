@@ -12,9 +12,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import nf.durga.model.Status;
 import nf.durga.model.Task;
+import nf.durga.model.WaitingFor;
 import nf.durga.service.TaskService;
 
 /**
@@ -34,6 +37,13 @@ public class TaskController {
     @GetMapping
     public List<Task> list() {
         return taskService.list();
+    }
+
+    @GetMapping("/search")
+    public List<Task> search(@RequestParam(required = false) String serverKey,
+                              @RequestParam(required = false) Status status,
+                              @RequestParam(required = false) WaitingFor waitingFor) {
+        return taskService.search(serverKey, status, waitingFor, null, null);
     }
 
     @GetMapping("/{id}")
