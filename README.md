@@ -68,6 +68,20 @@ Règles de séparation à respecter lors des évolutions :
 | waitingForCustom    | String          | libellé libre si `waitingFor = CUSTOM`     |
 | source              | TaskSource      | MANUAL, AGENT, COPILOT, EMAIL              |
 | createdAt/updatedAt | LocalDateTime   | gérés automatiquement par `TaskService`    |
+| archived            | Boolean         | `false` par défaut ; les tâches archivées n'apparaissent plus dans `list()`/la vue principale |
+| dueDate             | LocalDate       |                                            |
+| tags                | String          |                                            |
+| priority            | Integer         | 1 = critique, 2 = élevée, 3 = normale, 4 = faible |
+
+Logique métier (`TaskService`) exposée en plus du CRUD de base :
+
+- `search(serverKey, status, waitingFor, archived, priority)` : recherche à
+  critères tous optionnels (les `null` sont ignorés).
+- `archive(id)` : marque une tâche comme archivée.
+- `changeStatus(id, newStatus)` : change uniquement le statut.
+- `getActiveTasks()` : tâches non archivées (équivalent à `list()`).
+- `getBlockedTasks()` : tâches actives avec `waitingFor != NONE`.
+- `getTasksByServer(serverKey)` : tâches actives d'un serveur donné.
 
 ## API REST
 
@@ -75,7 +89,8 @@ Base : `/api/tasks`
 
 | Méthode | URL              | Description                     |
 |---------|------------------|----------------------------------|
-| GET     | /api/tasks       | Liste toutes les tâches          |
+| GET     | /api/tasks       | Liste les tâches non archivées   |
+| GET     | /api/tasks/search | Recherche filtrée (`?serverKey=&status=&waitingFor=`, tous optionnels) |
 | GET     | /api/tasks/{id}  | Détail d'une tâche (404 si absente) |
 | POST    | /api/tasks       | Création (201)                   |
 | PUT     | /api/tasks/{id}  | Mise à jour (404 si absente)      |
@@ -110,7 +125,11 @@ Application disponible sur `http://localhost:8080/` (SPA) et
 
 ## Évolutions futures envisagées
 
-- Exposition via MCP (Model Context Protocol).
+- Exposition via MCP (Model Context Protocol), en s'appuyant notamment sur
+  `search()`, `archive()`, `changeStatus()`, `getBlockedTasks()` et
+  `getTasksByServer()` pour faciliter l'exploitation par des agents IA.
+- Endpoints REST pour `archive`/`changeStatus`/`getBlockedTasks` (non exposés
+  à ce stade, seule la logique métier existe dans `TaskService`).
 - Validation des entrées (`spring-boot-starter-validation` déjà présent en
   dépendance).
 - Éventuelle édition/suppression depuis la SPA (actuellement lecture seule).
