@@ -1,0 +1,131 @@
+:root {
+    --color-bg: #f4f5f7;
+    --color-card: #ffffff;
+    --color-text: #1f2933;
+    --color-muted: #616e7c;
+    --color-border: #e0e3e7;
+    --color-primary: #2f6feb;
+
+    --color-status-data-grabbing: #7c8b9d;
+    --color-status-investigation: #2f6feb;
+    --color-status-fixing: #e6a23c;
+    --color-status-report: #35a76d;
+
+    --color-waiting-none: #9aa5b1;
+    --color-waiting-cloudops: #6b46c1;
+    --color-waiting-rnd: #d9822b;
+    --color-waiting-custom: #c05780;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+.app-header {
+    padding: 24px 32px;
+    background: var(--color-card);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 1.75rem;
+}
+
+.app-header p {
+    margin: 4px 0 0;
+    color: var(--color-muted);
+}
+
+main {
+    padding: 24px 32px;
+}
+
+.status-message {
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    background: #fdecea;
+    color: #b71c1c;
+    border: 1px solid #f5c6cb;
+}
+
+.task-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.task-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.task-card h2 {
+    margin: 0 0 8px;
+    font-size: 1.1rem;
+}
+
+.task-card .description {
+    margin: 0 0 12px;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+}
+
+.badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #fff;
+}
+
+.badge.status-data_grabbing { background: var(--color-status-data-grabbing); }
+.badge.status-investigation { background: var(--color-status-investigation); }
+.badge.status-fixing { background: var(--color-status-fixing); }
+.badge.status-report { background: var(--color-status-report); }
+
+.badge.waiting-none { background: var(--color-waiting-none); }
+.badge.waiting-cloudops { background: var(--color-waiting-cloudops); }
+.badge.waiting-rnd { background: var(--color-waiting-rnd); }
+.badge.waiting-custom { background: var(--color-waiting-custom); }
+
+.task-card .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--color-muted);
+    border-top: 1px solid var(--color-border);
+    padding-top: 8px;
+}
+
+.task-card .meta span strong {
+    color: var(--color-text);
+}
+
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--color-muted);
+    padding: 48px 0;
+}
