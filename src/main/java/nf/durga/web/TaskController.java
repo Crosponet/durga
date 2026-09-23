@@ -46,6 +46,16 @@ public class TaskController {
         return taskService.search(serverKey, status, waitingFor, null, null);
     }
 
+    @GetMapping("/blocked")
+    public List<Task> getBlockedTasks() {
+        return taskService.getBlockedTasks();
+    }
+
+    @GetMapping("/server/{serverKey}")
+    public List<Task> getTasksByServer(@PathVariable String serverKey) {
+        return taskService.getTasksByServer(serverKey);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Task> get(@PathVariable UUID id) {
         return taskService.get(id)
@@ -67,5 +77,18 @@ public class TaskController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         taskService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/archive")
+    public Task archive(@PathVariable UUID id) {
+        return taskService.archive(id);
+    }
+
+    @PostMapping("/{id}/status")
+    public Task changeStatus(@PathVariable UUID id, @RequestBody ChangeStatusRequest request) {
+        return taskService.changeStatus(id, request.status());
+    }
+
+    public record ChangeStatusRequest(Status status) {
     }
 }

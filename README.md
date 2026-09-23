@@ -91,10 +91,20 @@ Base : `/api/tasks`
 |---------|------------------|----------------------------------|
 | GET     | /api/tasks       | Liste les tâches non archivées   |
 | GET     | /api/tasks/search | Recherche filtrée (`?serverKey=&status=&waitingFor=`, tous optionnels) |
+| GET     | /api/tasks/blocked | Tâches actives en attente d'un tiers (`archived=false` et `waitingFor != NONE`) |
+| GET     | /api/tasks/server/{serverKey} | Tâches actives d'un serveur donné |
 | GET     | /api/tasks/{id}  | Détail d'une tâche (404 si absente) |
 | POST    | /api/tasks       | Création (201)                   |
 | PUT     | /api/tasks/{id}  | Mise à jour (404 si absente)      |
 | DELETE  | /api/tasks/{id}  | Suppression (204, 404 si absente) |
+| POST    | /api/tasks/{id}/archive | Archive la tâche (200 si succès, 404 si absente) |
+| POST    | /api/tasks/{id}/status | Change uniquement le statut, body `{"status": "FIXING"}` (200 si succès, 404 si absente) |
+
+Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
+`TaskController`) et correspondent aux futurs outils MCP prévus :
+`get_blocked_tasks`, `get_tasks_by_server`, `archive_task`, `change_status`.
+Les futurs outils MCP appelleront directement `TaskService`, sans dupliquer
+cette logique.
 
 ## Frontend (SPA)
 
@@ -125,11 +135,10 @@ Application disponible sur `http://localhost:8080/` (SPA) et
 
 ## Évolutions futures envisagées
 
-- Exposition via MCP (Model Context Protocol), en s'appuyant notamment sur
-  `search()`, `archive()`, `changeStatus()`, `getBlockedTasks()` et
-  `getTasksByServer()` pour faciliter l'exploitation par des agents IA.
-- Endpoints REST pour `archive`/`changeStatus`/`getBlockedTasks` (non exposés
-  à ce stade, seule la logique métier existe dans `TaskService`).
+- Exposition via MCP (Model Context Protocol) : les outils prévus
+  (`get_blocked_tasks`, `get_tasks_by_server`, `archive_task`,
+  `change_status`, etc.) s'appuieront directement sur `TaskService`, comme
+  le fait déjà `TaskController`.
 - Validation des entrées (`spring-boot-starter-validation` déjà présent en
   dépendance).
 - Éventuelle édition/suppression depuis la SPA (actuellement lecture seule).
