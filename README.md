@@ -9,9 +9,9 @@ incidents) : sujet, description, itération, serveur concerné, statut
 d'avancement, et éventuel blocage (« en attente de »).
 
 Le projet est volontairement construit en couches simples et indépendantes,
-sans base de données ni ORM, pour rester facile à faire évoluer. Une
-évolution prévue à terme est d'exposer l'application via **MCP (Model
-Context Protocol)**, en plus (ou à la place) de la couche REST actuelle.
+sans base de données ni ORM, pour rester facile à faire évoluer. Les
+opérations métier sont exposées via l'API REST et via **MCP (Model Context
+Protocol)** pour permettre leur utilisation par des agents IA.
 
 ## Stack technique
 
@@ -20,6 +20,7 @@ Context Protocol)**, en plus (ou à la place) de la couche REST actuelle.
 - Gradle (wrapper fourni : `gradlew` / `gradlew.bat`)
 - Lombok
 - Jackson (+ `jackson-datatype-jsr310` pour les `LocalDateTime`)
+- Spring AI MCP Server WebMVC 2.0.1, basé sur le SDK MCP Java officiel
 - Stockage : fichier JSON local (`data/tasks.json`), **aucun ORM, aucune base
   de données**
 - Frontend : SPA HTML/CSS/JS **sans framework**, servie en statique par Spring
@@ -31,8 +32,9 @@ Context Protocol)**, en plus (ou à la place) de la couche REST actuelle.
 src/main/java/nf/durga/
 ├── model/       Task, Status, WaitingFor, TaskSource (enums + POJO Lombok)
 ├── storage/     JsonTaskStorage (lecture/écriture data/tasks.json via Jackson)
-├── service/     TaskService (logique métier : CRUD, UUID, timestamps)
-└── web/         TaskController (REST), ApiExceptionHandler (mapping erreurs)
+├── service/     TaskService, UpdateTaskRequest (logique métier)
+├── web/         TaskController (REST), ApiExceptionHandler (mapping erreurs)
+└── mcp/         TaskMcpTools, McpConfig (adaptation et exposition MCP)
 
 src/main/resources/
 ├── static/      index.html, app.js, style.css (SPA)
@@ -53,6 +55,15 @@ Règles de séparation à respecter lors des évolutions :
 - **`web`** (`TaskController`) : ne contient **aucune logique métier**,
   délègue uniquement à `TaskService`. `ApiExceptionHandler` traduit les
   exceptions métier (ex. `NoSuchElementException`) en réponses HTTP.
+- **`mcp`** (`TaskMcpTools`) : adapte les paramètres MCP puis délègue
+  exclusivement à `TaskService`. Les outils MCP ne contiennent aucune logique
+  métier et n'appellent jamais directement le stockage.
+
+```text
+SPA -> REST ----\
+                 -> TaskService -> JsonTaskStorage
+Agent -> MCP ---/
+```
 
 ## Modèle de données (`Task`)
 
@@ -79,6 +90,8 @@ Logique métier (`TaskService`) exposée en plus du CRUD de base :
   critères tous optionnels (les `null` sont ignorés).
 - `archive(id)` : marque une tâche comme archivée.
 - `changeStatus(id, newStatus)` : change uniquement le statut.
+- `patch(id, request)` : met à jour uniquement les champs non nuls de
+  `UpdateTaskRequest` et conserve tous les autres champs.
 - `getActiveTasks()` : tâches non archivées (équivalent à `list()`).
 - `getBlockedTasks()` : tâches actives avec `waitingFor != NONE`.
 - `getTasksByServer(serverKey)` : tâches actives d'un serveur donné.
@@ -101,10 +114,57 @@ Base : `/api/tasks`
 | POST    | /api/tasks/{id}/status | Change uniquement le statut, body `{"status": "FIXING"}` (200 si succès, 404 si absente) |
 
 Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
-`TaskController`) et correspondent aux futurs outils MCP prévus :
-`get_blocked_tasks`, `get_tasks_by_server`, `archive_task`, `change_status`.
-Les futurs outils MCP appelleront directement `TaskService`, sans dupliquer
-cette logique.
+`TaskController`).
+
+## MCP
+
+Le serveur MCP démarre avec l'application Spring Boot et utilise le transport
+**Streamable HTTP** sur :
+
+```text
+http://localhost:8080/mcp
+```
+
+La configuration se trouve dans `application.properties`. Gradle importe le
+BOM `org.springframework.ai:spring-ai-bom:2.0.1` et utilise
+`org.springframework.ai:spring-ai-starter-mcp-server-webmvc`, qui intègre le
+SDK MCP Java officiel.
+
+Outils exposés :
+
+| Outil | Délégation métier |
+|-------|--------------------|
+| `create_task` | construit l'entrée avec `source=COPILOT`, puis `TaskService.create()` |
+| `list_tasks` | `TaskService.getActiveTasks()` |
+| `search_tasks` | `TaskService.search()` |
+| `update_task` | construit `UpdateTaskRequest`, puis `TaskService.patch()` |
+| `archive_task` | `TaskService.archive()` |
+| `change_status` | `TaskService.changeStatus()` |
+| `get_blocked_tasks` | `TaskService.getBlockedTasks()` |
+| `get_tasks_by_server` | `TaskService.getTasksByServer()` |
+
+`update_task` est un patch : seuls les champs non nuls sont modifiés. Une
+valeur `null` signifie « ne pas modifier ». Les erreurs existantes
+(identifiant absent, etc.) remontent au client MCP ; les UUID, statuts,
+attentes et dates invalides produisent des messages explicites.
+
+Exemple de configuration d'un client/agent compatible MCP Streamable HTTP :
+
+```json
+{
+  "mcpServers": {
+    "durga": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+```
+
+L'agent peut ensuite appeler, par exemple, `get_blocked_tasks`, puis
+`change_status` avec l'UUID choisi. Le serveur MCP HTTP n'ajoute pas
+d'authentification par défaut : ne pas exposer `/mcp` publiquement sans
+contrôle d'accès en amont.
 
 ## Frontend (SPA)
 
@@ -135,10 +195,8 @@ Application disponible sur `http://localhost:8080/` (SPA) et
 
 ## Évolutions futures envisagées
 
-- Exposition via MCP (Model Context Protocol) : les outils prévus
-  (`get_blocked_tasks`, `get_tasks_by_server`, `archive_task`,
-  `change_status`, etc.) s'appuieront directement sur `TaskService`, comme
-  le fait déjà `TaskController`.
 - Validation des entrées (`spring-boot-starter-validation` déjà présent en
   dépendance).
+- Authentification/autorisation devant l'endpoint MCP avant toute exposition
+  hors environnement local.
 - Éventuelle édition/suppression depuis la SPA (actuellement lecture seule).

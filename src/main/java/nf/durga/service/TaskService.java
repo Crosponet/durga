@@ -92,6 +92,30 @@ public class TaskService {
         return updated;
     }
 
+    public Task patch(UUID id, UpdateTaskRequest request) {
+        Task existing = get(id)
+                .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
+
+        Task updated = existing.toBuilder()
+                .subject(request.subject() != null ? request.subject() : existing.getSubject())
+                .description(request.description() != null ? request.description() : existing.getDescription())
+                .iteration(request.iteration() != null ? request.iteration() : existing.getIteration())
+                .status(request.status() != null ? request.status() : existing.getStatus())
+                .waitingFor(request.waitingFor() != null ? request.waitingFor() : existing.getWaitingFor())
+                .waitingForCustom(request.waitingForCustom() != null
+                        ? request.waitingForCustom()
+                        : existing.getWaitingForCustom())
+                .priority(request.priority() != null ? request.priority() : existing.getPriority())
+                .dueDate(request.dueDate() != null ? request.dueDate() : existing.getDueDate())
+                .archived(request.archived() != null ? request.archived() : existing.getArchived())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        tasks.set(tasks.indexOf(existing), updated);
+        storage.save(tasks);
+        return updated;
+    }
+
     public void delete(UUID id) {
         boolean removed = tasks.removeIf(task -> task.getId().equals(id));
         if (!removed) {
