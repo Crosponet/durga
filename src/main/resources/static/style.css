@@ -463,6 +463,48 @@ main {
     width: auto;
 }
 
+.task-picker {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px;
+    background: var(--color-card);
+}
+
+.task-picker-server {
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font: inherit;
+}
+
+.task-picker-list {
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.task-picker-item {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400 !important;
+    padding: 2px 0;
+}
+
+.task-picker-item input {
+    width: auto;
+}
+
+.task-picker-empty {
+    margin: 0;
+    color: var(--color-text-muted, #666);
+    font-size: 0.9em;
+}
+
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -493,6 +535,12 @@ main {
     border-color: var(--color-border);
     background: var(--color-card);
     color: var(--color-text);
+}
+
+.button-danger {
+    background: #b71c1c;
+    color: #fff;
+    margin-right: auto;
 }
 
 .form-error {

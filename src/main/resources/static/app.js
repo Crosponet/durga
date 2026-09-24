@@ -177,6 +177,72 @@ function addLinkDetail(parent, label, url) {
     parent.append(term, description);
 }
 
+function taskSubjectById(id) {
+    const task = allTasks.find((item) => item.id === id);
+    return task ? (task.subject || "(sans sujet)") : id;
+}
+
+function createTaskPicker(selectedIds, excludeTaskId, defaultServerKey) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "task-picker";
+    const selected = new Set(selectedIds || []);
+    const servers = [...new Set(allTasks.filter((item) => !item.archived).map((item) => item.serverKey).filter(Boolean))].sort();
+    const serverOptions = servers.map((server) => `<option value="${server}">${server}</option>`).join("");
+    wrapper.innerHTML = `
+        <select class="task-picker-server">
+            <option value="">Tous les serveurs</option>
+            ${serverOptions}
+        </select>
+        <div class="task-picker-list"></div>
+    `;
+    const serverSelect = wrapper.querySelector(".task-picker-server");
+    const listEl = wrapper.querySelector(".task-picker-list");
+    if (defaultServerKey && servers.includes(defaultServerKey)) {
+        serverSelect.value = defaultServerKey;
+    }
+    function renderList() {
+        listEl.innerHTML = "";
+        const server = serverSelect.value;
+        const candidates = allTasks.filter((item) => !item.archived
+            && item.id !== excludeTaskId
+            && (!server || item.serverKey === server));
+        if (!candidates.length) {
+            const empty = document.createElement("p");
+            empty.className = "task-picker-empty";
+            empty.textContent = "Aucune tâche disponible.";
+            listEl.appendChild(empty);
+            return;
+        }
+        candidates.forEach((item) => {
+            const label = document.createElement("label");
+            label.className = "task-picker-item";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.dataset.taskId = item.id;
+            checkbox.checked = selected.has(item.id);
+            const text = document.createElement("span");
+            text.textContent = item.subject || "(sans sujet)";
+            label.append(checkbox, text);
+            listEl.appendChild(label);
+        });
+    }
+    listEl.addEventListener("change", (event) => {
+        const checkbox = event.target.closest("input[type=checkbox]");
+        if (!checkbox) {
+            return;
+        }
+        if (checkbox.checked) {
+            selected.add(checkbox.dataset.taskId);
+        } else {
+            selected.delete(checkbox.dataset.taskId);
+        }
+    });
+    serverSelect.addEventListener("change", renderList);
+    renderList();
+    wrapper.getSelectedIds = () => Array.from(selected);
+    return wrapper;
+}
+
 function createTaskForm(task) {
     const form = document.createElement("form");
     form.className = "task-form";
@@ -207,8 +273,8 @@ function createTaskForm(task) {
         </div>
         <label>Tags<input name="tags"></label>
         <label>Lien Jira<input name="jiraUrl" type="url" placeholder="https://..."></label>
-        <label>Tâches préalables (UUID, une par ligne ou séparées par des virgules)
-            <textarea name="requires" rows="3"></textarea>
+        <label>Tâches préalables
+            <div data-requires-picker></div>
         </label>
         <label class="checkbox-field">
             <input name="archived" type="checkbox"> Tâche archivée
@@ -233,8 +299,10 @@ function createTaskForm(task) {
     fields.waitingForCustom.value = task.waitingForCustom || "";
     fields.tags.value = task.tags || "";
     fields.jiraUrl.value = task.jiraUrl || "";
-    fields.requires.value = (task.requires || []).join("\n");
     fields.archived.checked = Boolean(task.archived);
+    const requiresPicker = createTaskPicker(task.requires || [], task.id, task.serverKey);
+    form.querySelector("[data-requires-picker]").appendChild(requiresPicker);
+    form.requiresPicker = requiresPicker;
     return form;
 }
 
@@ -257,7 +325,7 @@ function showTaskDetails(task) {
     addDetail(details, "Archivée", task.archived ? "Oui" : "Non");
     addLinkDetail(details, "Demande Jira", task.jiraUrl);
     addDetail(details, "Tâches préalables", task.requires?.length
-        ? task.requires.join(", ")
+        ? task.requires.map(taskSubjectById).join(", ")
         : "-");
     addDetail(details, "Identifiant", task.id);
     return details;
@@ -294,7 +362,7 @@ function showTaskEdit(task) {
             error.hidden = false;
             return;
         }
-        const requires = data.get("requires").split(/[\s,]+/).filter(Boolean);
+        const requires = form.requiresPicker.getSelectedIds();
         const payload = {
             id: task.id,
             subject: data.get("subject").trim(),
@@ -397,36 +465,50 @@ function renderCalendar() {
 }
 
 function showMeetingDetails(meeting) {
-    const date = toDateTime(meeting.meetingAt);
-    showError(`Réunion ${meeting.serverKey || "sans serveur"} : ${date.toLocaleString("fr-FR")}`);
+    openMeetingModal(meeting);
 }
 
-function createMeetingForm() {
+function toDatetimeLocalValue(date) {
+    if (!date || Number.isNaN(date.getTime())) {
+        return "";
+    }
+    const pad = (value) => String(value).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function createMeetingForm(meeting) {
     const form = document.createElement("form");
     form.className = "task-form";
+    const meetingAtValue = meeting ? toDatetimeLocalValue(toDateTime(meeting.meetingAt)) : "";
     form.innerHTML = `
         <label>Serveur<input name="serverKey" required></label>
         <label>Date et heure<input name="meetingAt" type="datetime-local" required></label>
-        <label>Tâches associées (UUID, une par ligne ou séparées par des virgules)
-            <textarea name="taskIds" rows="4"></textarea>
+        <label>Tâches associées
+            <div data-task-ids-picker></div>
         </label>
         <p class="form-error" role="alert" hidden></p>
         <div class="form-actions">
+            ${meeting ? '<button class="button button-danger" type="button" data-delete-meeting>Supprimer</button>' : ""}
             <button class="button button-secondary" type="button" data-cancel-meeting>Annuler</button>
-            <button class="button button-primary" type="submit">Créer la réunion</button>
+            <button class="button button-primary" type="submit">${meeting ? "Enregistrer" : "Créer la réunion"}</button>
         </div>
     `;
+    form.elements.serverKey.value = meeting ? meeting.serverKey || "" : "";
+    form.elements.meetingAt.value = meetingAtValue;
+    const taskIdsPicker = createTaskPicker(meeting ? meeting.taskIds || [] : [], null, meeting ? meeting.serverKey : null);
+    form.querySelector("[data-task-ids-picker]").appendChild(taskIdsPicker);
+    form.taskIdsPicker = taskIdsPicker;
     return form;
 }
 
-function openMeetingModal() {
+function openMeetingModal(meeting) {
     meetingModalContentEl.innerHTML = "";
-    const form = createMeetingForm();
+    const form = createMeetingForm(meeting);
     const error = form.querySelector(".form-error");
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const data = new FormData(form);
-        const taskIds = data.get("taskIds").split(/[\s,]+/).filter(Boolean);
+        const taskIds = form.taskIdsPicker.getSelectedIds();
         const payload = {
             serverKey: data.get("serverKey").trim(),
             meetingAt: data.get("meetingAt"),
@@ -435,8 +517,9 @@ function openMeetingModal() {
         const submitButton = form.querySelector("button[type=submit]");
         submitButton.disabled = true;
         try {
-            const response = await fetch("/api/meetings", {
-                method: "POST",
+            const url = meeting ? `/api/meetings/${meeting.id}` : "/api/meetings";
+            const response = await fetch(url, {
+                method: meeting ? "PUT" : "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
@@ -444,15 +527,46 @@ function openMeetingModal() {
                 const message = await response.text();
                 throw new Error(message || `Erreur HTTP ${response.status}`);
             }
-            meetings.push(await response.json());
+            const saved = await response.json();
+            if (meeting) {
+                const index = meetings.findIndex((item) => item.id === meeting.id);
+                if (index >= 0) {
+                    meetings[index] = saved;
+                }
+            } else {
+                meetings.push(saved);
+            }
             renderCalendar();
             closeMeetingModal();
         } catch (requestError) {
-            error.textContent = `Impossible de créer la réunion : ${requestError.message}`;
+            error.textContent = `Impossible d'enregistrer la réunion : ${requestError.message}`;
             error.hidden = false;
             submitButton.disabled = false;
         }
     });
+    const deleteButton = form.querySelector("[data-delete-meeting]");
+    if (deleteButton) {
+        deleteButton.addEventListener("click", async () => {
+            if (!window.confirm("Supprimer cette réunion ?")) {
+                return;
+            }
+            deleteButton.disabled = true;
+            try {
+                const response = await fetch(`/api/meetings/${meeting.id}`, { method: "DELETE" });
+                if (!response.ok && response.status !== 204) {
+                    const message = await response.text();
+                    throw new Error(message || `Erreur HTTP ${response.status}`);
+                }
+                meetings = meetings.filter((item) => item.id !== meeting.id);
+                renderCalendar();
+                closeMeetingModal();
+            } catch (requestError) {
+                error.textContent = `Impossible de supprimer la réunion : ${requestError.message}`;
+                error.hidden = false;
+                deleteButton.disabled = false;
+            }
+        });
+    }
     form.querySelector("[data-cancel-meeting]").addEventListener("click", closeMeetingModal);
     meetingModalContentEl.appendChild(form);
     meetingModalEl.hidden = false;

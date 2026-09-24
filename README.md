@@ -210,7 +210,16 @@ La modale permet aussi de modifier les champs éditables d'une tâche puis de
 valider les changements via l'API REST. Un calendrier mensuel est affiché
 au-dessus des filtres : il charge les réunions client, permet de naviguer
 entre les mois et colore chaque réunion selon son serveur. Le bouton
-« Ajouter » ouvre un formulaire de création de réunion.
+« Ajouter » ouvre un formulaire de création de réunion. Un clic sur une
+réunion du calendrier ouvre la même modale pré-remplie, permettant de la
+modifier ou de la supprimer (avec confirmation).
+
+Les champs faisant référence à d'autres tâches (« Tâches préalables » sur une
+tâche, tâches associées à une réunion) sont présentés et édités via un
+sélecteur dédié : liste à cocher affichant le sujet des tâches (jamais leur
+UUID), filtrable par serveur, qui exclut systématiquement les tâches
+archivées ainsi que, pour « Tâches préalables », la tâche en cours d'édition
+elle-même.
 
 Les lignes peuvent être réorganisées par glisser-déposer (drag & drop HTML5
 natif, sans framework). Au dépôt, la tâche déplacée reçoit un rang
