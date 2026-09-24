@@ -83,6 +83,8 @@ Agent -> MCP ---/
 | dueDate             | LocalDate       |                                            |
 | tags                | String          |                                            |
 | priority            | Integer         | 1 = critique, 2 = élevée, 3 = normale, 4 = faible |
+| jiraUrl             | String          | lien vers la demande Jira                    |
+| requires            | List<UUID>      | tâches préalables à terminer avant celle-ci  |
 
 Logique métier (`TaskService`) exposée en plus du CRUD de base :
 
@@ -169,8 +171,18 @@ contrôle d'accès en amont.
 ## Frontend (SPA)
 
 `src/main/resources/static/` : `index.html` + `app.js` + `style.css`, sans
-framework JS, utilise `fetch()`. Affiche actuellement la liste des tâches
-sous forme de cartes (lecture seule, `GET /api/tasks`).
+framework JS, utilise `fetch()`. La SPA affiche les tâches actives sous forme
+de lignes empilées façon todo-list (`GET /api/tasks`). Un clic
+sur une ligne ouvre une modale contenant l'ensemble des champs de la tâche,
+dont le lien vers la demande Jira lorsqu'il est renseigné ;
+la modale se ferme avec son bouton, un clic sur l'arrière-plan ou la touche
+`Escape`.
+
+Une barre latérale permet également de filtrer les tâches actives par statut
+et par serveur. Les filtres sont appliqués côté navigateur aux tâches déjà
+chargées et pourront être complétés ultérieurement par d'autres critères.
+La modale permet aussi de modifier les champs éditables d'une tâche puis de
+valider les changements via l'API REST.
 
 ## Stockage
 
@@ -199,4 +211,4 @@ Application disponible sur `http://localhost:8080/` (SPA) et
   dépendance).
 - Authentification/autorisation devant l'endpoint MCP avant toute exposition
   hors environnement local.
-- Éventuelle édition/suppression depuis la SPA (actuellement lecture seule).
+- Éventuelle suppression depuis la SPA.

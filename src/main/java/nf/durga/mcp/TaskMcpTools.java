@@ -37,7 +37,9 @@ public class TaskMcpTools {
             @ToolParam(description = "Libellé d'attente personnalisé", required = false) String waitingForCustom,
             @ToolParam(description = "Priorité: 1 critique, 2 élevée, 3 normale, 4 faible",
                     required = false) Integer priority,
-            @ToolParam(description = "Échéance au format YYYY-MM-DD", required = false) String dueDate) {
+            @ToolParam(description = "Échéance au format YYYY-MM-DD", required = false) String dueDate,
+            @ToolParam(description = "Lien vers la demande Jira", required = false) String jiraUrl,
+            @ToolParam(description = "UUID des tâches préalables", required = false) List<String> requires) {
         Task task = Task.builder()
                 .subject(subject)
                 .description(description)
@@ -47,6 +49,8 @@ public class TaskMcpTools {
                 .waitingForCustom(waitingForCustom)
                 .priority(priority)
                 .dueDate(parseDate(dueDate))
+                .jiraUrl(jiraUrl)
+                .requires(parseIds(requires))
                 .source(TaskSource.COPILOT)
                 .build();
         return taskService.create(task);
@@ -86,7 +90,10 @@ public class TaskMcpTools {
             @ToolParam(description = "Nouvelle priorité de 1 à 4", required = false) Integer priority,
             @ToolParam(description = "Nouvelle échéance au format YYYY-MM-DD",
                     required = false) String dueDate,
-            @ToolParam(description = "Nouvel état d'archivage", required = false) Boolean archived) {
+            @ToolParam(description = "Nouvel état d'archivage", required = false) Boolean archived,
+            @ToolParam(description = "Nouveau lien vers la demande Jira", required = false) String jiraUrl,
+            @ToolParam(description = "Nouvelles tâches préalables par UUID", required = false)
+                    List<String> requires) {
         UpdateTaskRequest request = new UpdateTaskRequest(
                 subject,
                 description,
@@ -96,7 +103,9 @@ public class TaskMcpTools {
                 waitingForCustom,
                 priority,
                 parseDate(dueDate),
-                archived);
+                archived,
+                jiraUrl,
+                parseIds(requires));
         return taskService.patch(parseId(id), request);
     }
 
@@ -130,6 +139,10 @@ public class TaskMcpTools {
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("UUID de tâche invalide : " + value, exception);
         }
+    }
+
+    private List<UUID> parseIds(List<String> values) {
+        return values == null ? null : values.stream().map(this::parseId).toList();
     }
 
     private Status parseOptionalStatus(String value) {

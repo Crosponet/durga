@@ -2,6 +2,7 @@ package nf.durga.model;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
@@ -34,4 +35,7 @@ public class Task {
 
     /** 1 = critique, 2 = élevée, 3 = normale, 4 = faible. */
     private Integer priority;
+    private String jiraUrl;
+    /** Identifiants des tâches qui doivent être terminées avant celle-ci. */
+    private List<UUID> requires;
 }

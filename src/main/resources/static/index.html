@@ -14,8 +14,51 @@
 
     <main>
         <div id="status-message" class="status-message" hidden></div>
-        <div id="task-list" class="task-list"></div>
+        <div class="content-layout">
+            <aside class="filter-panel" aria-labelledby="filters-title">
+                <div class="filter-header">
+                    <h2 id="filters-title">Filtres</h2>
+                    <button id="reset-filters" class="reset-filters" type="button">
+                        Réinitialiser
+                    </button>
+                </div>
+                <label class="filter-field" for="status-filter">
+                    <span>Statut</span>
+                    <select id="status-filter">
+                        <option value="">Tous les statuts</option>
+                        <option value="DATA_GRABBING">Collecte de données</option>
+                        <option value="INVESTIGATION">Investigation</option>
+                        <option value="FIXING">Correction</option>
+                        <option value="REPORT">Rapport</option>
+                    </select>
+                </label>
+                <label class="filter-field" for="server-filter">
+                    <span>Serveur</span>
+                    <select id="server-filter">
+                        <option value="">Tous les serveurs</option>
+                    </select>
+                </label>
+                <p id="filter-count" class="filter-count" aria-live="polite"></p>
+            </aside>
+            <section class="task-section" aria-labelledby="tasks-title">
+                <h2 id="tasks-title" class="visually-hidden">Tâches</h2>
+                <div id="task-list" class="task-list"></div>
+            </section>
+        </div>
     </main>
+
+    <div id="task-modal" class="modal" hidden>
+        <div class="modal-backdrop" data-close-modal></div>
+        <section class="modal-dialog" role="dialog" aria-modal="true"
+                 aria-labelledby="modal-title">
+            <div class="modal-header">
+                <h2 id="modal-title">Détail de la tâche</h2>
+                <button id="modal-close" class="modal-close" type="button"
+                        aria-label="Fermer">×</button>
+            </div>
+            <div id="modal-content" class="modal-content"></div>
+        </section>
+    </div>
 
     <script src="app.js"></script>
 </body>

@@ -1,6 +1,8 @@
 package nf.durga.service;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
 
 import nf.durga.model.Status;
 import nf.durga.model.WaitingFor;
@@ -18,5 +20,7 @@ public record UpdateTaskRequest(
         String waitingForCustom,
         Integer priority,
         LocalDate dueDate,
-        Boolean archived) {
+        Boolean archived,
+        String jiraUrl,
+        List<UUID> requires) {
 }

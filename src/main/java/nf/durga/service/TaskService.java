@@ -108,6 +108,8 @@ public class TaskService {
                 .priority(request.priority() != null ? request.priority() : existing.getPriority())
                 .dueDate(request.dueDate() != null ? request.dueDate() : existing.getDueDate())
                 .archived(request.archived() != null ? request.archived() : existing.getArchived())
+                .jiraUrl(request.jiraUrl() != null ? request.jiraUrl() : existing.getJiraUrl())
+                .requires(request.requires() != null ? request.requires() : existing.getRequires())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
