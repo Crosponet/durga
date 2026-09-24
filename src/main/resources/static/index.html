@@ -16,6 +16,19 @@
         <div id="status-message" class="status-message" hidden></div>
         <div class="content-layout">
             <aside class="filter-panel" aria-labelledby="filters-title">
+                <section class="calendar-panel" aria-labelledby="calendar-title">
+                    <div class="calendar-header">
+                        <h2 id="calendar-title">Réunions</h2>
+                        <button id="add-meeting" class="button button-primary calendar-add"
+                                type="button">Ajouter</button>
+                    </div>
+                    <div class="calendar-navigation">
+                        <button id="previous-month" type="button" aria-label="Mois précédent">‹</button>
+                        <strong id="calendar-month"></strong>
+                        <button id="next-month" type="button" aria-label="Mois suivant">›</button>
+                    </div>
+                    <div id="calendar" class="calendar" aria-live="polite"></div>
+                </section>
                 <div class="filter-header">
                     <h2 id="filters-title">Filtres</h2>
                     <button id="reset-filters" class="reset-filters" type="button">
@@ -57,6 +70,19 @@
                         aria-label="Fermer">×</button>
             </div>
             <div id="modal-content" class="modal-content"></div>
+        </section>
+    </div>
+
+    <div id="meeting-modal" class="modal" hidden>
+        <div class="modal-backdrop" data-close-meeting-modal></div>
+        <section class="modal-dialog" role="dialog" aria-modal="true"
+                 aria-labelledby="meeting-modal-title">
+            <div class="modal-header">
+                <h2 id="meeting-modal-title">Ajouter une réunion</h2>
+                <button id="meeting-modal-close" class="modal-close" type="button"
+                        aria-label="Fermer">×</button>
+            </div>
+            <div id="meeting-modal-content" class="modal-content"></div>
         </section>
     </div>
 

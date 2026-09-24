@@ -10,9 +10,19 @@ const statusFilterEl = document.getElementById("status-filter");
 const serverFilterEl = document.getElementById("server-filter");
 const resetFiltersEl = document.getElementById("reset-filters");
 const filterCountEl = document.getElementById("filter-count");
+const calendarEl = document.getElementById("calendar");
+const calendarMonthEl = document.getElementById("calendar-month");
+const previousMonthEl = document.getElementById("previous-month");
+const nextMonthEl = document.getElementById("next-month");
+const addMeetingEl = document.getElementById("add-meeting");
+const meetingModalEl = document.getElementById("meeting-modal");
+const meetingModalCloseEl = document.getElementById("meeting-modal-close");
+const meetingModalContentEl = document.getElementById("meeting-modal-content");
 let lastFocusedElement = null;
 let allTasks = [];
 let currentTask = null;
+let meetings = [];
+let displayedMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function showError(message) {
     statusMessageEl.textContent = message;
@@ -30,6 +40,22 @@ function formatDate(isoDateTime) {
     return date.toLocaleString("fr-FR");
 }
 
+function toDateTime(value) {
+    if (Array.isArray(value)) {
+        const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value;
+        return new Date(year, month - 1, day, hour, minute, second, nano / 1000000);
+    }
+    return value ? new Date(value) : null;
+}
+
+function meetingDayKey(meeting) {
+    const date = toDateTime(meeting.meetingAt);
+    if (!date || Number.isNaN(date.getTime())) {
+        return "";
+    }
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function badgeClass(prefix, value) {
     return `badge ${prefix}-${(value || "").toLowerCase()}`;
 }
@@ -45,6 +71,10 @@ function serverBadgeClass(serverKey) {
     const value = serverKey || "";
     const hash = [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
     return `badge server-tag server-color-${hash % 6}`;
+}
+
+function serverColorClass(serverKey) {
+    return serverBadgeClass(serverKey).split(" ").find((className) => className.startsWith("server-color-"));
 }
 
 function createServerBadge(serverKey) {
@@ -283,6 +313,119 @@ function closeTaskModal() {
     lastFocusedElement?.focus();
 }
 
+function renderCalendar() {
+    const year = displayedMonth.getFullYear();
+    const month = displayedMonth.getMonth();
+    calendarMonthEl.textContent = displayedMonth.toLocaleDateString("fr-FR", {
+        month: "long", year: "numeric"
+    });
+    calendarEl.innerHTML = "";
+    ["L", "M", "M", "J", "V", "S", "D"].forEach((day) => {
+        const weekday = document.createElement("span");
+        weekday.className = "calendar-weekday";
+        weekday.textContent = day;
+        calendarEl.appendChild(weekday);
+    });
+
+    const firstDay = new Date(year, month, 1);
+    const offset = (firstDay.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let index = 0; index < offset + daysInMonth; index += 1) {
+        const cell = document.createElement("div");
+        cell.className = "calendar-day";
+        if (index < offset) {
+            cell.classList.add("calendar-day-empty");
+        } else {
+            const day = index - offset + 1;
+            const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const number = document.createElement("span");
+            number.className = "calendar-day-number";
+            number.textContent = day;
+            cell.appendChild(number);
+            meetings.filter((meeting) => meetingDayKey(meeting) === key).forEach((meeting) => {
+                const meetingLink = document.createElement("button");
+                meetingLink.type = "button";
+                meetingLink.className = `calendar-meeting ${serverColorClass(meeting.serverKey)}`;
+                const date = toDateTime(meeting.meetingAt);
+                meetingLink.textContent = `${date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} ${meeting.serverKey || "?"}`;
+                meetingLink.title = `Réunion ${meeting.serverKey || "sans serveur"}`;
+                meetingLink.addEventListener("click", () => showMeetingDetails(meeting));
+                cell.appendChild(meetingLink);
+            });
+        }
+        calendarEl.appendChild(cell);
+    }
+}
+
+function showMeetingDetails(meeting) {
+    const date = toDateTime(meeting.meetingAt);
+    showError(`Réunion ${meeting.serverKey || "sans serveur"} : ${date.toLocaleString("fr-FR")}`);
+}
+
+function createMeetingForm() {
+    const form = document.createElement("form");
+    form.className = "task-form";
+    form.innerHTML = `
+        <label>Serveur<input name="serverKey" required></label>
+        <label>Date et heure<input name="meetingAt" type="datetime-local" required></label>
+        <label>Tâches associées (UUID, une par ligne ou séparées par des virgules)
+            <textarea name="taskIds" rows="4"></textarea>
+        </label>
+        <p class="form-error" role="alert" hidden></p>
+        <div class="form-actions">
+            <button class="button button-secondary" type="button" data-cancel-meeting>Annuler</button>
+            <button class="button button-primary" type="submit">Créer la réunion</button>
+        </div>
+    `;
+    return form;
+}
+
+function openMeetingModal() {
+    meetingModalContentEl.innerHTML = "";
+    const form = createMeetingForm();
+    const error = form.querySelector(".form-error");
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const taskIds = data.get("taskIds").split(/[\s,]+/).filter(Boolean);
+        const payload = {
+            serverKey: data.get("serverKey").trim(),
+            meetingAt: data.get("meetingAt"),
+            taskIds
+        };
+        const submitButton = form.querySelector("button[type=submit]");
+        submitButton.disabled = true;
+        try {
+            const response = await fetch("/api/meetings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const message = await response.text();
+                throw new Error(message || `Erreur HTTP ${response.status}`);
+            }
+            meetings.push(await response.json());
+            renderCalendar();
+            closeMeetingModal();
+        } catch (requestError) {
+            error.textContent = `Impossible de créer la réunion : ${requestError.message}`;
+            error.hidden = false;
+            submitButton.disabled = false;
+        }
+    });
+    form.querySelector("[data-cancel-meeting]").addEventListener("click", closeMeetingModal);
+    meetingModalContentEl.appendChild(form);
+    meetingModalEl.hidden = false;
+    document.body.classList.add("modal-open");
+    form.elements.serverKey.focus();
+}
+
+function closeMeetingModal() {
+    meetingModalEl.hidden = true;
+    document.body.classList.remove("modal-open");
+}
+
 function renderTasks(tasks) {
     taskListEl.innerHTML = "";
     filterCountEl.textContent = `${tasks.length} tâche${tasks.length > 1 ? "s" : ""}`;
@@ -337,6 +480,19 @@ async function loadTasks() {
     }
 }
 
+async function loadMeetings() {
+    try {
+        const response = await fetch("/api/meetings");
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP ${response.status}`);
+        }
+        meetings = await response.json();
+        renderCalendar();
+    } catch (error) {
+        showError(`Impossible de charger les réunions : ${error.message}`);
+    }
+}
+
 statusFilterEl.addEventListener("change", applyFilters);
 serverFilterEl.addEventListener("change", applyFilters);
 resetFiltersEl.addEventListener("click", () => {
@@ -354,6 +510,27 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
         closeTaskModal();
     }
+    if (event.key === "Escape" && !meetingModalEl.hidden) {
+        closeMeetingModal();
+    }
+});
+
+previousMonthEl.addEventListener("click", () => {
+    displayedMonth = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() - 1, 1);
+    renderCalendar();
+});
+nextMonthEl.addEventListener("click", () => {
+    displayedMonth = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() + 1, 1);
+    renderCalendar();
+});
+addMeetingEl.addEventListener("click", openMeetingModal);
+meetingModalCloseEl.addEventListener("click", closeMeetingModal);
+meetingModalEl.addEventListener("click", (event) => {
+    if (event.target.matches("[data-close-meeting-modal]")) {
+        closeMeetingModal();
+    }
 });
 
 loadTasks();
+renderCalendar();
+loadMeetings();

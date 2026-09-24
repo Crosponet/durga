@@ -65,6 +65,105 @@ main {
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
+.calendar-panel {
+    margin: -18px -18px 20px;
+    padding: 18px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.calendar-header,
+.calendar-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.calendar-header h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.calendar-add {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+}
+
+.calendar-navigation {
+    margin: 16px 0 10px;
+    font-size: 0.85rem;
+    text-transform: capitalize;
+}
+
+.calendar-navigation button {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-card);
+    color: var(--color-text);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.calendar {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 2px;
+}
+
+.calendar-weekday {
+    padding-bottom: 4px;
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.calendar-day {
+    min-height: 42px;
+    padding: 3px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: #fafbfc;
+}
+
+.calendar-day-empty {
+    border-color: transparent;
+    background: transparent;
+}
+
+.calendar-day-number {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    text-align: right;
+}
+
+.calendar-meeting {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    padding: 2px 3px;
+    border: 0;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 0.58rem;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.calendar-meeting:hover,
+.calendar-meeting:focus-visible {
+    outline: 2px solid var(--color-text);
+    outline-offset: 1px;
+}
+
 .filter-header {
     display: flex;
     align-items: center;
@@ -212,6 +311,12 @@ main {
 .badge.server-color-3 { background: #c2410c; }
 .badge.server-color-4 { background: #15803d; }
 .badge.server-color-5 { background: #be185d; }
+.calendar-meeting.server-color-0 { background: #2563eb; }
+.calendar-meeting.server-color-1 { background: #0891b2; }
+.calendar-meeting.server-color-2 { background: #7c3aed; }
+.calendar-meeting.server-color-3 { background: #c2410c; }
+.calendar-meeting.server-color-4 { background: #15803d; }
+.calendar-meeting.server-color-5 { background: #be185d; }
 
 .badge.waiting-none { background: var(--color-waiting-none); }
 .badge.waiting-cloudops { background: var(--color-waiting-cloudops); }

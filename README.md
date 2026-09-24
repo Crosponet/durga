@@ -118,6 +118,29 @@ Base : `/api/tasks`
 Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
 `TaskController`).
 
+## Réunions client
+
+Les réunions client sont stockées séparément dans `data/meetings.json`. Une
+réunion contient un identifiant, une clé serveur, une date/heure
+(`meetingAt`) et une liste d'identifiants de tâches (`taskIds`), ainsi que
+ses dates de création et de mise à jour.
+
+API REST, base `/api/meetings` :
+
+| Méthode | URL | Description |
+|---------|-----|-------------|
+| GET | /api/meetings | Liste les réunions |
+| GET | /api/meetings/{id} | Détail d'une réunion |
+| POST | /api/meetings | Création (201) |
+| PUT | /api/meetings/{id} | Mise à jour |
+| DELETE | /api/meetings/{id} | Suppression |
+
+Les outils MCP correspondants sont `create_client_meeting`,
+`list_client_meetings`, `get_client_meeting`, `update_client_meeting` et
+`delete_client_meeting`. Les dates sont transmises au format ISO-8601 et les
+tâches sont référencées par UUID ; leurs données ne sont pas dupliquées dans
+la réunion.
+
 ## MCP
 
 Le serveur MCP démarre avec l'application Spring Boot et utilise le transport
@@ -182,7 +205,10 @@ Une barre latérale permet également de filtrer les tâches actives par statut
 et par serveur. Les filtres sont appliqués côté navigateur aux tâches déjà
 chargées et pourront être complétés ultérieurement par d'autres critères.
 La modale permet aussi de modifier les champs éditables d'une tâche puis de
-valider les changements via l'API REST.
+valider les changements via l'API REST. Un calendrier mensuel est affiché
+au-dessus des filtres : il charge les réunions client, permet de naviguer
+entre les mois et colore chaque réunion selon son serveur. Le bouton
+« Ajouter » ouvre un formulaire de création de réunion.
 
 ## Stockage
 
