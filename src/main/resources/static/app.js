@@ -7,6 +7,7 @@ const modalCloseEl = document.getElementById("modal-close");
 const modalTitleEl = document.getElementById("modal-title");
 const modalContentEl = document.getElementById("modal-content");
 const statusFilterEl = document.getElementById("status-filter");
+const workStatusFilterEl = document.getElementById("work-status-filter");
 const serverFilterEl = document.getElementById("server-filter");
 const resetFiltersEl = document.getElementById("reset-filters");
 const filterCountEl = document.getElementById("filter-count");
@@ -50,6 +51,42 @@ function toDateTime(value) {
     return value ? new Date(value) : null;
 }
 
+function toLocalDate(value) {
+    if (Array.isArray(value)) {
+        const [year, month, day] = value;
+        return new Date(year, month - 1, day);
+    }
+    if (typeof value === "string" && value) {
+        const [year, month, day] = value.split("-").map(Number);
+        if (year && month && day) {
+            return new Date(year, month - 1, day);
+        }
+    }
+    return null;
+}
+
+function interpolateColor(start, end, ratio) {
+    const clampedRatio = Math.max(0, Math.min(1, ratio));
+    const channel = (index) => Math.round(start[index] + (end[index] - start[index]) * clampedRatio);
+    return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
+}
+
+function applyDueDateStyle(row, dueDate) {
+    const date = toLocalDate(dueDate);
+    if (!date || Number.isNaN(date.getTime())) {
+        row.style.setProperty("--task-row-bg", "#f1eff8");
+        row.style.setProperty("--task-row-color", "#1f2933");
+        return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysUntilDue = Math.ceil((date - today) / 86400000);
+    const urgency = 1 - Math.max(0, Math.min(30, daysUntilDue)) / 30;
+    row.style.setProperty("--task-row-bg", interpolateColor([219, 234, 254], [76, 29, 149], urgency));
+    row.style.setProperty("--task-row-color", urgency > 0.65 ? "#ffffff" : "#1f2933");
+}
+
 function meetingDayKey(meeting) {
     const date = toDateTime(meeting.meetingAt);
     if (!date || Number.isNaN(date.getTime())) {
@@ -59,7 +96,7 @@ function meetingDayKey(meeting) {
 }
 
 function badgeClass(prefix, value) {
-    return `badge ${prefix}-${(value || "").toLowerCase()}`;
+    return `badge ${prefix}-${(value || "").toLowerCase().replaceAll(" ", "-")}`;
 }
 
 function createBadge(prefix, value, fallback = "INCONNU") {
@@ -89,6 +126,11 @@ function createServerBadge(serverKey) {
 function createTaskRow(task) {
     const row = document.createElement("button");
     row.className = "task-row";
+    applyDueDateStyle(row, task.dueDate);
+    if (task.requires?.length) {
+        row.classList.add("task-row-dependent");
+        row.title = "Cette tâche dépend d'autres tâches.";
+    }
     row.type = "button";
     row.draggable = true;
     row.dataset.taskId = task.id;
@@ -135,6 +177,7 @@ function createTaskRow(task) {
     const badgeRow = document.createElement("div");
     badgeRow.className = "badge-row";
     badgeRow.appendChild(createBadge("status", task.status));
+    badgeRow.appendChild(createBadge("work-status", task.workStatus || "TODO"));
     badgeRow.appendChild(createServerBadge(task.serverKey));
 
     const waitingLabel = task.waitingFor === "CUSTOM" && task.waitingForCustom
@@ -256,6 +299,12 @@ function createTaskForm(task) {
                 <option value="FIXING">Correction</option>
                 <option value="REPORT">Rapport</option>
             </select></label>
+            <label>État de travail<select name="workStatus" required>
+                <option value="TODO">À faire</option>
+                <option value="ON IT">En cours</option>
+                <option value="PAUSE">En pause</option>
+                <option value="FINISHED">Terminée</option>
+            </select></label>
             <label>Serveur<input name="serverKey"></label>
             <label>Itération<input name="iteration" type="number" min="0"></label>
             <label>Priorité<input name="priority" type="number" min="1" max="4"></label>
@@ -290,6 +339,7 @@ function createTaskForm(task) {
     fields.subject.value = task.subject || "";
     fields.description.value = task.description || "";
     fields.status.value = task.status || "INVESTIGATION";
+    fields.workStatus.value = task.workStatus || "TODO";
     fields.serverKey.value = task.serverKey || "";
     fields.iteration.value = task.iteration ?? "";
     fields.priority.value = task.priority ?? "";
@@ -311,6 +361,7 @@ function showTaskDetails(task) {
     details.className = "task-details";
     addDetail(details, "Description", task.description);
     addDetail(details, "Statut", task.status);
+    addDetail(details, "État de travail", task.workStatus || "TODO");
     addDetail(details, "Priorité", task.priority);
     addDetail(details, "Serveur", task.serverKey);
     addDetail(details, "Itération", task.iteration);
@@ -370,6 +421,7 @@ function showTaskEdit(task) {
             iteration: data.get("iteration") ? Number(data.get("iteration")) : null,
             serverKey: data.get("serverKey").trim() || null,
             status: data.get("status"),
+            workStatus: data.get("workStatus"),
             waitingFor: data.get("waitingFor"),
             waitingForCustom: data.get("waitingForCustom").trim() || null,
             source: task.source,
@@ -614,8 +666,10 @@ function applyFilters() {
     const filteredTasks = allTasks
         .filter((task) => {
             const matchesStatus = !statusFilterEl.value || task.status === statusFilterEl.value;
+            const matchesWorkStatus = !workStatusFilterEl.value
+                || (task.workStatus || "TODO") === workStatusFilterEl.value;
             const matchesServer = !serverFilterEl.value || task.serverKey === serverFilterEl.value;
-            return matchesStatus && matchesServer;
+            return matchesStatus && matchesWorkStatus && matchesServer;
         })
         .sort((left, right) => (left.sortOrder ?? Infinity) - (right.sortOrder ?? Infinity));
     renderTasks(filteredTasks);
@@ -652,8 +706,10 @@ async function handleTaskDrop(draggedId, targetId, dropBefore) {
         .filter((task) => task.id !== draggedId)
         .filter((task) => {
             const matchesStatus = !statusFilterEl.value || task.status === statusFilterEl.value;
+            const matchesWorkStatus = !workStatusFilterEl.value
+                || (task.workStatus || "TODO") === workStatusFilterEl.value;
             const matchesServer = !serverFilterEl.value || task.serverKey === serverFilterEl.value;
-            return matchesStatus && matchesServer;
+            return matchesStatus && matchesWorkStatus && matchesServer;
         })
         .sort((left, right) => (left.sortOrder ?? Infinity) - (right.sortOrder ?? Infinity));
 
@@ -721,9 +777,11 @@ async function loadMeetings() {
 }
 
 statusFilterEl.addEventListener("change", applyFilters);
+workStatusFilterEl.addEventListener("change", applyFilters);
 serverFilterEl.addEventListener("change", applyFilters);
 resetFiltersEl.addEventListener("click", () => {
     statusFilterEl.value = "";
+    workStatusFilterEl.value = "";
     serverFilterEl.value = "";
     applyFilters();
 });
@@ -750,7 +808,7 @@ nextMonthEl.addEventListener("click", () => {
     displayedMonth = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() + 1, 1);
     renderCalendar();
 });
-addMeetingEl.addEventListener("click", openMeetingModal);
+addMeetingEl.addEventListener("click", () => openMeetingModal());
 meetingModalCloseEl.addEventListener("click", closeMeetingModal);
 meetingModalEl.addEventListener("click", (event) => {
     if (event.target.matches("[data-close-meeting-modal]")) {

@@ -30,7 +30,7 @@ Protocol)** pour permettre leur utilisation par des agents IA.
 
 ```
 src/main/java/nf/durga/
-├── model/       Task, Status, WaitingFor, TaskSource (enums + POJO Lombok)
+├── model/       Task, Status, WorkStatus, WaitingFor, TaskSource (enums + POJO Lombok)
 ├── storage/     JsonTaskStorage (lecture/écriture data/tasks.json via Jackson)
 ├── service/     TaskService, UpdateTaskRequest (logique métier)
 ├── web/         TaskController (REST), ApiExceptionHandler (mapping erreurs)
@@ -75,6 +75,7 @@ Agent -> MCP ---/
 | iteration           | Integer         |                                            |
 | serverKey           | String          |                                            |
 | status              | Status          | DATA_GRABBING, INVESTIGATION, FIXING, REPORT |
+| workStatus          | WorkStatus      | TODO, ON IT, PAUSE, FINISHED ; `TODO` par défaut |
 | waitingFor          | WaitingFor      | NONE, CLOUDOPS, RND, CUSTOM                |
 | waitingForCustom    | String          | libellé libre si `waitingFor = CUSTOM`     |
 | source              | TaskSource      | MANUAL, AGENT, COPILOT, EMAIL              |
@@ -89,10 +90,11 @@ Agent -> MCP ---/
 
 Logique métier (`TaskService`) exposée en plus du CRUD de base :
 
-- `search(serverKey, status, waitingFor, archived, priority)` : recherche à
+- `search(serverKey, status, waitingFor, archived, priority, workStatus)` : recherche à
   critères tous optionnels (les `null` sont ignorés).
 - `archive(id)` : marque une tâche comme archivée.
 - `changeStatus(id, newStatus)` : change uniquement le statut.
+- `changeWorkStatus(id, newWorkStatus)` : change uniquement l'état de travail.
 - `patch(id, request)` : met à jour uniquement les champs non nuls de
   `UpdateTaskRequest` et conserve tous les autres champs.
 - `getActiveTasks()` : tâches non archivées (équivalent à `list()`).
@@ -106,7 +108,7 @@ Base : `/api/tasks`
 | Méthode | URL              | Description                     |
 |---------|------------------|----------------------------------|
 | GET     | /api/tasks       | Liste les tâches non archivées   |
-| GET     | /api/tasks/search | Recherche filtrée (`?serverKey=&status=&waitingFor=`, tous optionnels) |
+| GET     | /api/tasks/search | Recherche filtrée (`?serverKey=&status=&waitingFor=&workStatus=`, tous optionnels) |
 | GET     | /api/tasks/blocked | Tâches actives en attente d'un tiers (`archived=false` et `waitingFor != NONE`) |
 | GET     | /api/tasks/server/{serverKey} | Tâches actives d'un serveur donné |
 | GET     | /api/tasks/{id}  | Détail d'une tâche (404 si absente) |
@@ -115,6 +117,7 @@ Base : `/api/tasks`
 | DELETE  | /api/tasks/{id}  | Suppression (204, 404 si absente) |
 | POST    | /api/tasks/{id}/archive | Archive la tâche (200 si succès, 404 si absente) |
 | POST    | /api/tasks/{id}/status | Change uniquement le statut, body `{"status": "FIXING"}` (200 si succès, 404 si absente) |
+| POST    | /api/tasks/{id}/work-status | Change uniquement l'état de travail, body `{"workStatus": "ON IT"}` (200 si succès, 404 si absente) |
 | POST    | /api/tasks/{id}/reorder | Déplace la tâche à un rang donné, body `{"sortOrder": 2.5}` ; recalcule et renvoie toutes les tâches actives renumbotées (200 si succès, 404 si absente) |
 
 Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
@@ -167,6 +170,7 @@ Outils exposés :
 | `update_task` | construit `UpdateTaskRequest`, puis `TaskService.patch()` |
 | `archive_task` | `TaskService.archive()` |
 | `change_status` | `TaskService.changeStatus()` |
+| `change_work_status` | `TaskService.changeWorkStatus()` |
 | `get_blocked_tasks` | `TaskService.getBlockedTasks()` |
 | `get_tasks_by_server` | `TaskService.getTasksByServer()` |
 
@@ -203,9 +207,10 @@ dont le lien vers la demande Jira lorsqu'il est renseigné ;
 la modale se ferme avec son bouton, un clic sur l'arrière-plan ou la touche
 `Escape`.
 
-Une barre latérale permet également de filtrer les tâches actives par statut
-et par serveur. Les filtres sont appliqués côté navigateur aux tâches déjà
-chargées et pourront être complétés ultérieurement par d'autres critères.
+Une barre latérale permet également de filtrer les tâches actives par statut,
+état de travail et serveur. Les filtres sont appliqués côté navigateur aux
+tâches déjà chargées et pourront être complétés ultérieurement par d'autres
+critères.
 La modale permet aussi de modifier les champs éditables d'une tâche puis de
 valider les changements via l'API REST. Un calendrier mensuel est affiché
 au-dessus des filtres : il charge les réunions client, permet de naviguer
@@ -220,6 +225,13 @@ sélecteur dédié : liste à cocher affichant le sujet des tâches (jamais leur
 UUID), filtrable par serveur, qui exclut systématiquement les tâches
 archivées ainsi que, pour « Tâches préalables », la tâche en cours d'édition
 elle-même.
+
+Les lignes utilisent un fond discret dépendant de l'échéance : les tâches sans
+date d'échéance ont un lavande grisé très pâle, tandis que les tâches datées
+progressent du bleu clair au violet foncé à mesure que l'échéance approche
+(fenêtre de 30 jours). Les tâches qui dépendent d'autres tâches restent
+visuellement grisées et rayées en diagonale par-dessus leur couleur
+d'échéance.
 
 Les lignes peuvent être réorganisées par glisser-déposer (drag & drop HTML5
 natif, sans framework). Au dépôt, la tâche déplacée reçoit un rang

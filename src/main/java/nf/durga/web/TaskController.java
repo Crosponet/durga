@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import nf.durga.model.Status;
 import nf.durga.model.Task;
 import nf.durga.model.WaitingFor;
+import nf.durga.model.WorkStatus;
 import nf.durga.service.TaskService;
 
 /**
@@ -42,8 +43,10 @@ public class TaskController {
     @GetMapping("/search")
     public List<Task> search(@RequestParam(required = false) String serverKey,
                               @RequestParam(required = false) Status status,
-                              @RequestParam(required = false) WaitingFor waitingFor) {
-        return taskService.search(serverKey, status, waitingFor, null, null);
+                              @RequestParam(required = false) WaitingFor waitingFor,
+                              @RequestParam(required = false) String workStatus) {
+        return taskService.search(serverKey, status, waitingFor, null, null,
+                workStatus == null ? null : WorkStatus.fromValue(workStatus));
     }
 
     @GetMapping("/blocked")
@@ -89,12 +92,20 @@ public class TaskController {
         return taskService.changeStatus(id, request.status());
     }
 
+    @PostMapping("/{id}/work-status")
+    public Task changeWorkStatus(@PathVariable UUID id, @RequestBody ChangeWorkStatusRequest request) {
+        return taskService.changeWorkStatus(id, request.workStatus());
+    }
+
     @PostMapping("/{id}/reorder")
     public List<Task> reorder(@PathVariable UUID id, @RequestBody ReorderRequest request) {
         return taskService.reorder(id, request.sortOrder());
     }
 
     public record ChangeStatusRequest(Status status) {
+    }
+
+    public record ChangeWorkStatusRequest(WorkStatus workStatus) {
     }
 
     public record ReorderRequest(Double sortOrder) {

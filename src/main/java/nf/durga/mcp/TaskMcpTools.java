@@ -15,6 +15,7 @@ import nf.durga.model.Status;
 import nf.durga.model.Task;
 import nf.durga.model.TaskSource;
 import nf.durga.model.WaitingFor;
+import nf.durga.model.WorkStatus;
 import nf.durga.service.TaskService;
 import nf.durga.service.UpdateTaskRequest;
 
@@ -33,6 +34,8 @@ public class TaskMcpTools {
             @ToolParam(description = "Description détaillée", required = false) String description,
             @ToolParam(description = "Clé du serveur concerné", required = false) String serverKey,
             @ToolParam(description = "Statut: DATA_GRABBING, INVESTIGATION, FIXING ou REPORT") String status,
+            @ToolParam(description = "État de travail: TODO, ON IT, PAUSE ou FINISHED",
+                    required = false) String workStatus,
             @ToolParam(description = "Attente: NONE, CLOUDOPS, RND ou CUSTOM") String waitingFor,
             @ToolParam(description = "Libellé d'attente personnalisé", required = false) String waitingForCustom,
             @ToolParam(description = "Priorité: 1 critique, 2 élevée, 3 normale, 4 faible",
@@ -45,6 +48,7 @@ public class TaskMcpTools {
                 .description(description)
                 .serverKey(serverKey)
                 .status(parseStatus(status))
+                .workStatus(parseOptionalWorkStatus(workStatus))
                 .waitingFor(parseWaitingFor(waitingFor))
                 .waitingForCustom(waitingForCustom)
                 .priority(priority)
@@ -65,6 +69,8 @@ public class TaskMcpTools {
     public List<Task> searchTasks(
             @ToolParam(description = "Clé serveur", required = false) String serverKey,
             @ToolParam(description = "Statut", required = false) String status,
+            @ToolParam(description = "État de travail: TODO, ON IT, PAUSE ou FINISHED",
+                    required = false) String workStatus,
             @ToolParam(description = "Attente", required = false) String waitingFor,
             @ToolParam(description = "Filtre d'archivage", required = false) Boolean archived,
             @ToolParam(description = "Priorité de 1 à 4", required = false) Integer priority) {
@@ -73,7 +79,8 @@ public class TaskMcpTools {
                 parseOptionalStatus(status),
                 parseOptionalWaitingFor(waitingFor),
                 archived,
-                priority);
+                priority,
+                parseOptionalWorkStatus(workStatus));
     }
 
     @Tool(name = "update_task",
@@ -84,6 +91,8 @@ public class TaskMcpTools {
             @ToolParam(description = "Nouvelle description", required = false) String description,
             @ToolParam(description = "Nouvelle itération", required = false) Integer iteration,
             @ToolParam(description = "Nouveau statut", required = false) String status,
+            @ToolParam(description = "Nouvel état de travail: TODO, ON IT, PAUSE ou FINISHED",
+                    required = false) String workStatus,
             @ToolParam(description = "Nouvelle attente", required = false) String waitingFor,
             @ToolParam(description = "Nouveau libellé d'attente personnalisé",
                     required = false) String waitingForCustom,
@@ -99,6 +108,7 @@ public class TaskMcpTools {
                 description,
                 iteration,
                 parseOptionalStatus(status),
+                parseOptionalWorkStatus(workStatus),
                 parseOptionalWaitingFor(waitingFor),
                 waitingForCustom,
                 priority,
@@ -119,6 +129,14 @@ public class TaskMcpTools {
             @ToolParam(description = "UUID de la tâche") String id,
             @ToolParam(description = "Nouveau statut") String status) {
         return taskService.changeStatus(parseId(id), parseStatus(status));
+    }
+
+    @Tool(name = "change_work_status", description = "Change uniquement l'état de travail d'une tâche existante.")
+    public Task changeWorkStatus(
+            @ToolParam(description = "UUID de la tâche") String id,
+            @ToolParam(description = "Nouvel état de travail: TODO, ON IT, PAUSE ou FINISHED")
+                    String workStatus) {
+        return taskService.changeWorkStatus(parseId(id), parseWorkStatus(workStatus));
     }
 
     @Tool(name = "get_blocked_tasks",
@@ -154,11 +172,29 @@ public class TaskMcpTools {
             throw new IllegalArgumentException("Le statut est obligatoire. Valeurs valides : "
                     + enumValues(Status.values()));
         }
+
         try {
             return Status.valueOf(value.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("Statut invalide '" + value + "'. Valeurs valides : "
                     + enumValues(Status.values()), exception);
+        }
+    }
+
+    private WorkStatus parseOptionalWorkStatus(String value) {
+        return value == null ? null : parseWorkStatus(value);
+    }
+
+    private WorkStatus parseWorkStatus(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("L'état de travail est obligatoire. Valeurs valides : "
+                    + enumValues(WorkStatus.values()));
+        }
+        try {
+            return WorkStatus.fromValue(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("État de travail invalide '" + value + "'. Valeurs valides : "
+                    + enumValues(WorkStatus.values()), exception);
         }
     }
 

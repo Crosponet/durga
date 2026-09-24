@@ -10,6 +10,10 @@
     --color-status-investigation: #2f6feb;
     --color-status-fixing: #e6a23c;
     --color-status-report: #35a76d;
+    --color-work-status-todo: #7c8b9d;
+    --color-work-status-on-it: #2f6feb;
+    --color-work-status-pause: #e6a23c;
+    --color-work-status-finished: #35a76d;
 
     --color-waiting-none: #9aa5b1;
     --color-waiting-cloudops: #6b46c1;
@@ -247,25 +251,54 @@ main {
 .task-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .task-row {
+    position: relative;
     width: 100%;
     display: grid;
     grid-template-columns: minmax(180px, 1fr) auto minmax(260px, 1.5fr);
     align-items: center;
     gap: 16px;
-    padding: 14px 18px;
+    padding: 10px 16px;
     text-align: left;
     font: inherit;
-    color: inherit;
-    background: var(--color-card);
+    color: var(--task-row-color, inherit);
+    background: var(--task-row-bg, var(--color-card));
     border: 1px solid var(--color-border);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     cursor: grab;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    overflow: hidden;
+}
+
+.task-row-dependent {
+    color: var(--color-muted);
+    background:
+        linear-gradient(rgba(241, 243, 245, 0.78), rgba(241, 243, 245, 0.78)),
+        var(--task-row-bg, var(--color-card));
+    border-color: #cfd4da;
+}
+
+.task-row-dependent::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -18deg,
+        transparent 0,
+        transparent 18px,
+        rgba(120, 127, 137, 0.45) 18px,
+        rgba(120, 127, 137, 0.45) 22px
+    );
+    pointer-events: none;
+}
+
+.task-row-dependent > * {
+    position: relative;
+    z-index: 1;
 }
 
 .task-row.dragging {
@@ -312,7 +345,7 @@ main {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .badge {
@@ -328,6 +361,10 @@ main {
 .badge.status-investigation { background: var(--color-status-investigation); }
 .badge.status-fixing { background: var(--color-status-fixing); }
 .badge.status-report { background: var(--color-status-report); }
+.badge.work-status-todo { background: var(--color-work-status-todo); }
+.badge.work-status-on-it { background: var(--color-work-status-on-it); }
+.badge.work-status-pause { background: var(--color-work-status-pause); }
+.badge.work-status-finished { background: var(--color-work-status-finished); }
 
 .badge.server-color-0 { background: #2563eb; }
 .badge.server-color-1 { background: #0891b2; }

@@ -22,6 +22,7 @@ public class Task {
     private Integer iteration;
     private String serverKey;
     private Status status;
+    private WorkStatus workStatus;
     private WaitingFor waitingFor;
     private String waitingForCustom;
     private TaskSource source;

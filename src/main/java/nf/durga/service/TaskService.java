@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import nf.durga.model.Status;
 import nf.durga.model.Task;
 import nf.durga.model.WaitingFor;
+import nf.durga.model.WorkStatus;
 import nf.durga.storage.JsonTaskStorage;
 
 /**
@@ -35,7 +36,23 @@ public class TaskService {
     @PostConstruct
     void init() {
         tasks.addAll(storage.load());
+        backfillWorkStatus();
         backfillSortOrder();
+    }
+
+    /** Attribue TODO aux tâches issues d'un ancien format JSON. */
+    private void backfillWorkStatus() {
+        boolean changed = false;
+        for (int i = 0; i < tasks.size(); i++) {
+            Task task = tasks.get(i);
+            if (task.getWorkStatus() == null) {
+                tasks.set(i, task.toBuilder().workStatus(WorkStatus.TODO).build());
+                changed = true;
+            }
+        }
+        if (changed) {
+            storage.save(tasks);
+        }
     }
 
     /** Attribue un sortOrder aux tâches existantes qui n'en ont pas encore (migration douce). */
@@ -78,13 +95,14 @@ public class TaskService {
      * tâches archivées sont incluses sauf si {@code archived} est précisé.
      */
     public List<Task> search(String serverKey, Status status, WaitingFor waitingFor,
-                              Boolean archived, Integer priority) {
+                              Boolean archived, Integer priority, WorkStatus workStatus) {
         return tasks.stream()
                 .filter(task -> serverKey == null || serverKey.equals(task.getServerKey()))
                 .filter(task -> status == null || status == task.getStatus())
                 .filter(task -> waitingFor == null || waitingFor == task.getWaitingFor())
                 .filter(task -> archived == null || archived.equals(task.getArchived()))
                 .filter(task -> priority == null || priority.equals(task.getPriority()))
+                .filter(task -> workStatus == null || workStatus == task.getWorkStatus())
                 .toList();
     }
 
@@ -99,6 +117,7 @@ public class TaskService {
         Task toCreate = task.toBuilder()
                 .id(UUID.randomUUID())
                 .archived(Objects.requireNonNullElse(task.getArchived(), Boolean.FALSE))
+                .workStatus(Objects.requireNonNullElse(task.getWorkStatus(), WorkStatus.TODO))
                 .sortOrder(Objects.requireNonNullElse(task.getSortOrder(), nextSortOrder))
                 .createdAt(now)
                 .updatedAt(now)
@@ -115,6 +134,8 @@ public class TaskService {
         Task updated = task.toBuilder()
                 .id(existing.getId())
                 .createdAt(existing.getCreatedAt())
+                .workStatus(Objects.requireNonNullElse(task.getWorkStatus(),
+                        Objects.requireNonNullElse(existing.getWorkStatus(), WorkStatus.TODO)))
                 .updatedAt(LocalDateTime.now())
                 .build();
 
@@ -132,6 +153,7 @@ public class TaskService {
                 .description(request.description() != null ? request.description() : existing.getDescription())
                 .iteration(request.iteration() != null ? request.iteration() : existing.getIteration())
                 .status(request.status() != null ? request.status() : existing.getStatus())
+                .workStatus(request.workStatus() != null ? request.workStatus() : existing.getWorkStatus())
                 .waitingFor(request.waitingFor() != null ? request.waitingFor() : existing.getWaitingFor())
                 .waitingForCustom(request.waitingForCustom() != null
                         ? request.waitingForCustom()
@@ -178,6 +200,20 @@ public class TaskService {
 
         Task updated = existing.toBuilder()
                 .status(newStatus)
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        tasks.set(tasks.indexOf(existing), updated);
+        storage.save(tasks);
+        return updated;
+    }
+
+    public Task changeWorkStatus(UUID id, WorkStatus newWorkStatus) {
+        Task existing = get(id)
+                .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
+
+        Task updated = existing.toBuilder()
+                .workStatus(newWorkStatus)
                 .updatedAt(LocalDateTime.now())
                 .build();
 

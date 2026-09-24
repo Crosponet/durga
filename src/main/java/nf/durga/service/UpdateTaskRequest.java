@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import nf.durga.model.Status;
 import nf.durga.model.WaitingFor;
+import nf.durga.model.WorkStatus;
 
 /**
  * Requête de mise à jour partielle d'une tâche.
@@ -16,6 +17,7 @@ public record UpdateTaskRequest(
         String description,
         Integer iteration,
         Status status,
+        WorkStatus workStatus,
         WaitingFor waitingFor,
         String waitingForCustom,
         Integer priority,
