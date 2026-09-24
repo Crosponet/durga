@@ -10,6 +10,7 @@ const statusFilterEl = document.getElementById("status-filter");
 const serverFilterEl = document.getElementById("server-filter");
 const resetFiltersEl = document.getElementById("reset-filters");
 const filterCountEl = document.getElementById("filter-count");
+const blockOverlayEl = document.getElementById("block-overlay");
 const calendarEl = document.getElementById("calendar");
 const calendarMonthEl = document.getElementById("calendar-month");
 const previousMonthEl = document.getElementById("previous-month");
@@ -23,6 +24,7 @@ let allTasks = [];
 let currentTask = null;
 let meetings = [];
 let displayedMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+let draggedTaskId = null;
 
 function showError(message) {
     statusMessageEl.textContent = message;
@@ -88,7 +90,43 @@ function createTaskRow(task) {
     const row = document.createElement("button");
     row.className = "task-row";
     row.type = "button";
-    row.addEventListener("click", () => openTaskModal(task, row));
+    row.draggable = true;
+    row.dataset.taskId = task.id;
+    row.addEventListener("click", () => {
+        if (!row.classList.contains("dragging")) {
+            openTaskModal(task, row);
+        }
+    });
+    row.addEventListener("dragstart", (event) => {
+        draggedTaskId = task.id;
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", task.id);
+        row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        clearDropIndicators();
+        draggedTaskId = null;
+    });
+    row.addEventListener("dragover", (event) => {
+        if (!draggedTaskId || draggedTaskId === task.id) {
+            return;
+        }
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        const isBefore = isDropBefore(event, row);
+        clearDropIndicators();
+        row.classList.add(isBefore ? "drop-before" : "drop-after");
+    });
+    row.addEventListener("drop", (event) => {
+        event.preventDefault();
+        const isBefore = isDropBefore(event, row);
+        clearDropIndicators();
+        if (draggedTaskId && draggedTaskId !== task.id) {
+            handleTaskDrop(draggedTaskId, task.id, isBefore);
+        }
+        draggedTaskId = null;
+    });
 
     const title = document.createElement("h2");
     title.textContent = task.subject || "(sans sujet)";
@@ -272,7 +310,8 @@ function showTaskEdit(task) {
             tags: data.get("tags").trim() || null,
             priority: data.get("priority") ? Number(data.get("priority")) : null,
             jiraUrl: jiraUrl || null,
-            requires
+            requires,
+            sortOrder: task.sortOrder
         };
         const submitButton = form.querySelector("button[type=submit]");
         submitButton.disabled = true;
@@ -458,12 +497,86 @@ function populateServerFilter(tasks) {
 }
 
 function applyFilters() {
-    const filteredTasks = allTasks.filter((task) => {
-        const matchesStatus = !statusFilterEl.value || task.status === statusFilterEl.value;
-        const matchesServer = !serverFilterEl.value || task.serverKey === serverFilterEl.value;
-        return matchesStatus && matchesServer;
-    });
+    const filteredTasks = allTasks
+        .filter((task) => {
+            const matchesStatus = !statusFilterEl.value || task.status === statusFilterEl.value;
+            const matchesServer = !serverFilterEl.value || task.serverKey === serverFilterEl.value;
+            return matchesStatus && matchesServer;
+        })
+        .sort((left, right) => (left.sortOrder ?? Infinity) - (right.sortOrder ?? Infinity));
     renderTasks(filteredTasks);
+}
+
+function isDropBefore(event, row) {
+    const bounds = row.getBoundingClientRect();
+    return event.clientY < bounds.top + bounds.height / 2;
+}
+
+function clearDropIndicators() {
+    taskListEl.querySelectorAll(".drop-before, .drop-after").forEach((row) => {
+        row.classList.remove("drop-before", "drop-after");
+    });
+}
+
+function blockScreen() {
+    blockOverlayEl.hidden = false;
+}
+
+function unblockScreen() {
+    blockOverlayEl.hidden = true;
+}
+
+/**
+ * Calcule un sortOrder intermédiaire pour la tâche déplacée en fonction de
+ * ses nouvelles voisines dans la liste actuellement affichée (après
+ * filtrage), applique ce changement localement pour un retour visuel
+ * immédiat, puis envoie la nouvelle position au backend qui recalcule et
+ * renumbote l'ensemble des tâches.
+ */
+async function handleTaskDrop(draggedId, targetId, dropBefore) {
+    const displayedTasks = allTasks
+        .filter((task) => task.id !== draggedId)
+        .filter((task) => {
+            const matchesStatus = !statusFilterEl.value || task.status === statusFilterEl.value;
+            const matchesServer = !serverFilterEl.value || task.serverKey === serverFilterEl.value;
+            return matchesStatus && matchesServer;
+        })
+        .sort((left, right) => (left.sortOrder ?? Infinity) - (right.sortOrder ?? Infinity));
+
+    const targetIndex = displayedTasks.findIndex((task) => task.id === targetId);
+    const insertIndex = dropBefore ? targetIndex : targetIndex + 1;
+    const previousTask = displayedTasks[insertIndex - 1];
+    const nextTask = displayedTasks[insertIndex];
+    const previousOrder = previousTask ? previousTask.sortOrder ?? 0 : 0;
+    const nextOrder = nextTask ? nextTask.sortOrder ?? previousOrder + 2 : previousOrder + 2;
+    const intermediateSortOrder = (previousOrder + nextOrder) / 2;
+
+    const draggedTask = allTasks.find((task) => task.id === draggedId);
+    if (!draggedTask) {
+        return;
+    }
+    draggedTask.sortOrder = intermediateSortOrder;
+    applyFilters();
+
+    blockScreen();
+    try {
+        const response = await fetch(`${API_URL}/${encodeURIComponent(draggedId)}/reorder`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sortOrder: intermediateSortOrder })
+        });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || `Erreur HTTP ${response.status}`);
+        }
+        allTasks = await response.json();
+        applyFilters();
+    } catch (error) {
+        showError(`Impossible de réorganiser les tâches : ${error.message}`);
+        await loadTasks();
+    } finally {
+        unblockScreen();
+    }
 }
 
 async function loadTasks() {

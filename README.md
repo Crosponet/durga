@@ -85,6 +85,7 @@ Agent -> MCP ---/
 | priority            | Integer         | 1 = critique, 2 = élevée, 3 = normale, 4 = faible |
 | jiraUrl             | String          | lien vers la demande Jira                    |
 | requires            | List<UUID>      | tâches préalables à terminer avant celle-ci  |
+| sortOrder           | Double          | rang d'affichage pour le glisser-déposer (sans lien avec `priority`), renumboté par `TaskService.reorder()` |
 
 Logique métier (`TaskService`) exposée en plus du CRUD de base :
 
@@ -114,6 +115,7 @@ Base : `/api/tasks`
 | DELETE  | /api/tasks/{id}  | Suppression (204, 404 si absente) |
 | POST    | /api/tasks/{id}/archive | Archive la tâche (200 si succès, 404 si absente) |
 | POST    | /api/tasks/{id}/status | Change uniquement le statut, body `{"status": "FIXING"}` (200 si succès, 404 si absente) |
+| POST    | /api/tasks/{id}/reorder | Déplace la tâche à un rang donné, body `{"sortOrder": 2.5}` ; recalcule et renvoie toutes les tâches actives renumbotées (200 si succès, 404 si absente) |
 
 Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
 `TaskController`).
@@ -209,6 +211,17 @@ valider les changements via l'API REST. Un calendrier mensuel est affiché
 au-dessus des filtres : il charge les réunions client, permet de naviguer
 entre les mois et colore chaque réunion selon son serveur. Le bouton
 « Ajouter » ouvre un formulaire de création de réunion.
+
+Les lignes peuvent être réorganisées par glisser-déposer (drag & drop HTML5
+natif, sans framework). Au dépôt, la tâche déplacée reçoit un rang
+(`sortOrder`) intermédiaire calculé à partir de ses nouvelles voisines
+affichées, ce qui met à jour l'affichage immédiatement. L'écran est ensuite
+bloqué par un calque plein écran le temps de l'appel à
+`POST /api/tasks/{id}/reorder` : le backend renumbote alors l'ensemble des
+tâches actives avec des rangs entiers croissants, évitant toute dérive
+numérique, puis la liste est rechargée et l'écran débloqué. Le champ
+`sortOrder` ne porte aucune sémantique métier (contrairement à `priority`) :
+il ne sert qu'à l'ordre d'affichage.
 
 ## Stockage
 

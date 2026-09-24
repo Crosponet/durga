@@ -89,6 +89,14 @@ public class TaskController {
         return taskService.changeStatus(id, request.status());
     }
 
+    @PostMapping("/{id}/reorder")
+    public List<Task> reorder(@PathVariable UUID id, @RequestBody ReorderRequest request) {
+        return taskService.reorder(id, request.sortOrder());
+    }
+
     public record ChangeStatusRequest(Status status) {
+    }
+
+    public record ReorderRequest(Double sortOrder) {
     }
 }

@@ -2,6 +2,7 @@ package nf.durga.service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -34,6 +35,29 @@ public class TaskService {
     @PostConstruct
     void init() {
         tasks.addAll(storage.load());
+        backfillSortOrder();
+    }
+
+    /** Attribue un sortOrder aux tâches existantes qui n'en ont pas encore (migration douce). */
+    private void backfillSortOrder() {
+        double next = tasks.stream()
+                .map(Task::getSortOrder)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .max()
+                .orElse(0d);
+        boolean changed = false;
+        for (int i = 0; i < tasks.size(); i++) {
+            Task task = tasks.get(i);
+            if (task.getSortOrder() == null) {
+                next += 1;
+                tasks.set(i, task.toBuilder().sortOrder(next).build());
+                changed = true;
+            }
+        }
+        if (changed) {
+            storage.save(tasks);
+        }
     }
 
     public List<Task> list() {
@@ -66,9 +90,16 @@ public class TaskService {
 
     public Task create(Task task) {
         LocalDateTime now = LocalDateTime.now();
+        double nextSortOrder = tasks.stream()
+                .map(Task::getSortOrder)
+                .filter(Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .max()
+                .orElse(0d) + 1;
         Task toCreate = task.toBuilder()
                 .id(UUID.randomUUID())
                 .archived(Objects.requireNonNullElse(task.getArchived(), Boolean.FALSE))
+                .sortOrder(Objects.requireNonNullElse(task.getSortOrder(), nextSortOrder))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -153,6 +184,32 @@ public class TaskService {
         tasks.set(tasks.indexOf(existing), updated);
         storage.save(tasks);
         return updated;
+    }
+
+    /**
+     * Déplace une tâche à une position donnée (glisser-déposer côté SPA) :
+     * la tâche reçoit temporairement {@code targetSortOrder} (valeur
+     * potentiellement intermédiaire entre deux voisines), puis l'ensemble
+     * des tâches est retrié et renumboté avec des rangs entiers croissants
+     * pour éviter toute dérive numérique au fil des réorganisations.
+     */
+    public List<Task> reorder(UUID id, Double targetSortOrder) {
+        if (targetSortOrder == null) {
+            throw new IllegalArgumentException("Le rang cible (sortOrder) est obligatoire.");
+        }
+        Task existing = get(id)
+                .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
+
+        List<Task> ordered = new ArrayList<>(tasks);
+        ordered.set(ordered.indexOf(existing), existing.toBuilder().sortOrder(targetSortOrder).build());
+        ordered.sort(Comparator.comparing(Task::getSortOrder, Comparator.nullsLast(Comparator.naturalOrder())));
+
+        tasks.clear();
+        for (int i = 0; i < ordered.size(); i++) {
+            tasks.add(ordered.get(i).toBuilder().sortOrder((double) (i + 1)).build());
+        }
+        storage.save(tasks);
+        return list();
     }
 
     /** Tâches non archivées. */

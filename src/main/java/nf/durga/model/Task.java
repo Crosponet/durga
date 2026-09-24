@@ -38,4 +38,12 @@ public class Task {
     private String jiraUrl;
     /** Identifiants des tâches qui doivent être terminées avant celle-ci. */
     private List<UUID> requires;
+
+    /**
+     * Rang d'affichage utilisé pour le glisser-déposer manuel des tâches.
+     * Distinct de {@code priority} : ne porte aucune sémantique métier,
+     * uniquement un ordre. Renumboté (entiers croissants) par
+     * {@code TaskService} après chaque réorganisation.
+     */
+    private Double sortOrder;
 }

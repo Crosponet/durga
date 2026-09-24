@@ -264,8 +264,32 @@ main {
     border: 1px solid var(--color-border);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-    cursor: pointer;
+    cursor: grab;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.task-row.dragging {
+    opacity: 0.4;
+}
+
+.task-row.drop-before {
+    border-top: 3px solid var(--color-primary);
+}
+
+.task-row.drop-after {
+    border-bottom: 3px solid var(--color-primary);
+}
+
+.block-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(255, 255, 255, 0.35);
+    cursor: wait;
+}
+
+.block-overlay[hidden] {
+    display: none;
 }
 
 .task-row:hover,
