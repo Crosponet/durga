@@ -314,6 +314,15 @@ The application is available at `http://localhost:8080/` (SPA) and
 .\gradlew.bat test
 ```
 
+## Why are there so few tests?
+
+Durga is developed in real time and used in production: when a feature is
+needed, it is implemented and put to use immediately. When a bug appears, it
+is fixed immediately.
+
+Durga is intentionally simple and lightweight. A more comprehensive testing
+system will be introduced if the software's complexity increases.
+
 ## Potential future improvements
 
 - Validate inputs (`spring-boot-starter-validation` is already present as a
