@@ -1,63 +1,62 @@
 # Durga
 
-Application de suivi d'investigations client.
+Client investigation tracking application.
 
-## Contexte et objectif
+## Context and purpose
 
-Durga sert à suivre des tâches d'investigation client (bugs, demandes,
-incidents) : sujet, description, itération, serveur concerné, statut
-d'avancement, et éventuel blocage (« en attente de »).
+Durga tracks client investigation tasks (bugs, requests, and incidents):
+subject, description, iteration, affected server, work status, and any
+current blocker ("waiting for").
 
-Le projet est volontairement construit en couches simples et indépendantes,
-sans base de données ni ORM, pour rester facile à faire évoluer. Les
-opérations métier sont exposées via l'API REST et via **MCP (Model Context
-Protocol)** pour permettre leur utilisation par des agents IA.
+The project deliberately uses simple, independent layers without a database
+or ORM, so it remains easy to evolve. Business operations are exposed through
+the REST API and through **MCP (Model Context Protocol)** for use by AI agents.
 
-## Stack technique
+## Technology stack
 
 - Java 21
-- Spring Boot 3 (module Gradle : `id 'org.springframework.boot' version '4.1.1'`)
-- Gradle (wrapper fourni : `gradlew` / `gradlew.bat`)
+- Spring Boot 4.1.1
+- Gradle (wrapper included: `gradlew` / `gradlew.bat`)
 - Lombok
-- Jackson (+ `jackson-datatype-jsr310` pour les `LocalDateTime`)
-- Spring AI MCP Server WebMVC 2.0.1, basé sur le SDK MCP Java officiel
-- Stockage : fichier JSON local (`data/tasks.json`), **aucun ORM, aucune base
-  de données**
-- Frontend : SPA HTML/CSS/JS **sans framework**, servie en statique par Spring
-  Boot (`src/main/resources/static`)
+- Jackson, including `jackson-datatype-jsr310` for `LocalDateTime`
+- Spring AI MCP Server WebMVC 2.0.1, based on the official MCP Java SDK
+- Storage: local JSON files (`data/tasks.json`), with **no ORM or database**
+- Frontend: framework-free HTML/CSS/JS SPA, served statically by Spring Boot
+  from `src/main/resources/static`
 
 ## Architecture
 
-```
+```text
 src/main/java/nf/durga/
-├── model/       Task, Status, WorkStatus, WaitingFor, TaskSource (enums + POJO Lombok)
-├── storage/     JsonTaskStorage (lecture/écriture data/tasks.json via Jackson)
-├── service/     TaskService, UpdateTaskRequest (logique métier)
-├── web/         TaskController (REST), ApiExceptionHandler (mapping erreurs)
-└── mcp/         TaskMcpTools, McpConfig (adaptation et exposition MCP)
+├── model/       Task, Status, WorkStatus, WaitingFor, TaskSource (enums + Lombok POJOs)
+├── storage/     JsonTaskStorage (reads/writes data/tasks.json with Jackson)
+├── service/     TaskService, UpdateTaskRequest (business logic)
+├── web/         TaskController, ApiExceptionHandler (REST API and error mapping)
+└── mcp/         TaskMcpTools, McpConfig (MCP adaptation and exposure)
 
 src/main/resources/
 ├── static/      index.html, app.js, style.css (SPA)
 └── application.properties
 ```
 
-Règles de séparation à respecter lors des évolutions :
+Keep the following separation rules when extending the application:
 
-- **`model`** : uniquement des structures de données (pas de logique).
-- **`storage`** (`JsonTaskStorage`) : lecture/écriture du fichier JSON
-  uniquement. Pas de logique métier, pas d'annotation Spring liée au métier
-  (seul `@Component` est présent, pour le câblage/injection).
-  Expose `load()` et `save(List<Task>)`.
-- **`service`** (`TaskService`) : contient toute la logique métier
-  (génération d'UUID, gestion de `createdAt`/`updatedAt`, règles de
-  validation à venir). Appelle `storage.load()` au démarrage
-  (`@PostConstruct`) et `storage.save()` après chaque modification.
-- **`web`** (`TaskController`) : ne contient **aucune logique métier**,
-  délègue uniquement à `TaskService`. `ApiExceptionHandler` traduit les
-  exceptions métier (ex. `NoSuchElementException`) en réponses HTTP.
-- **`mcp`** (`TaskMcpTools`) : adapte les paramètres MCP puis délègue
-  exclusivement à `TaskService`. Les outils MCP ne contiennent aucune logique
-  métier et n'appellent jamais directement le stockage.
+- **`model`** contains data structures only; it must not contain business
+  logic.
+- **`storage`** (`JsonTaskStorage`) only reads and writes the JSON file. It
+  must not contain business logic or business-related Spring annotations
+  (`@Component` is used only for wiring and injection). It exposes `load()` and
+  `save(List<Task>)`.
+- **`service`** (`TaskService`) contains all business logic, including UUID
+  generation, `createdAt`/`updatedAt` handling, and future validation rules.
+  It calls `storage.load()` at startup (`@PostConstruct`) and
+  `storage.save()` after every modification.
+- **`web`** (`TaskController`) contains no business logic and only delegates to
+  `TaskService`. `ApiExceptionHandler` maps business exceptions such as
+  `NoSuchElementException` to HTTP responses.
+- **`mcp`** (`TaskMcpTools`) adapts MCP parameters and delegates exclusively to
+  `TaskService`. MCP tools contain no business logic and never access storage
+  directly.
 
 ```text
 SPA -> REST ----\
@@ -65,121 +64,137 @@ SPA -> REST ----\
 Agent -> MCP ---/
 ```
 
-## Modèle de données (`Task`)
+## Data model (`Task`)
 
-| Champ              | Type            | Notes                                   |
-|---------------------|-----------------|------------------------------------------|
-| id                  | UUID            | généré automatiquement à la création      |
-| subject             | String          |                                            |
-| description         | String          |                                            |
-| iteration           | Integer         |                                            |
-| serverKey           | String          |                                            |
-| status              | Status          | DATA_GRABBING, INVESTIGATION, FIXING, REPORT |
-| workStatus          | WorkStatus      | TODO, ON IT, PAUSE, FINISHED ; `TODO` par défaut |
-| waitingFor          | WaitingFor      | NONE, CLOUDOPS, RND, CUSTOM                |
-| waitingForCustom    | String          | libellé libre si `waitingFor = CUSTOM`     |
-| source              | TaskSource      | MANUAL, AGENT, COPILOT, EMAIL              |
-| createdAt/updatedAt | LocalDateTime   | gérés automatiquement par `TaskService`    |
-| archived            | Boolean         | `false` par défaut ; les tâches archivées n'apparaissent plus dans `list()`/la vue principale |
-| dueDate             | LocalDate       |                                            |
-| tags                | String          |                                            |
-| priority            | Integer         | 1 = critique, 2 = élevée, 3 = normale, 4 = faible |
-| jiraUrl             | String          | lien vers la demande Jira                    |
-| requires            | List<UUID>      | tâches préalables à terminer avant celle-ci  |
-| sortOrder           | Double          | rang d'affichage pour le glisser-déposer (sans lien avec `priority`), renumboté par `TaskService.reorder()` |
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `UUID` | Generated automatically when the task is created |
+| `subject` | `String` | |
+| `description` | `String` | |
+| `iteration` | `Integer` | |
+| `serverKey` | `String` | |
+| `status` | `Status` | `DATA_GRABBING`, `INVESTIGATION`, `FIXING`, `REPORT` |
+| `workStatus` | `WorkStatus` | `TODO`, `ON IT`, `PAUSE`, `FINISHED`; defaults to `TODO` |
+| `waitingFor` | `WaitingFor` | `NONE`, `CLOUDOPS`, `RND`, `CUSTOM` |
+| `waitingForCustom` | `String` | Free-form label when `waitingFor = CUSTOM` |
+| `source` | `TaskSource` | `MANUAL`, `AGENT`, `COPILOT`, `EMAIL` |
+| `createdAt` / `updatedAt` | `LocalDateTime` | Managed automatically by `TaskService` |
+| `archived` | `Boolean` | Defaults to `false`; archived tasks no longer appear in `list()` or the main view |
+| `dueDate` | `LocalDate` | |
+| `tags` | `String` | |
+| `priority` | `Integer` | `1 = critical`, `2 = high`, `3 = normal`, `4 = low` |
+| `jiraUrl` | `String` | Link to the Jira request |
+| `requires` | `List<UUID>` | Prerequisite tasks that must be finished first; until every prerequisite has `workStatus = FINISHED`, this task cannot move to `ON IT` or `FINISHED` |
+| `sortOrder` | `Double` | Display position for drag-and-drop; unrelated to `priority` and renumbered by `TaskService.reorder()` |
 
-Logique métier (`TaskService`) exposée en plus du CRUD de base :
+Additional business operations exposed by `TaskService`:
 
-- `search(serverKey, status, waitingFor, archived, priority, workStatus)` : recherche à
-  critères tous optionnels (les `null` sont ignorés).
-- `archive(id)` : marque une tâche comme archivée.
-- `changeStatus(id, newStatus)` : change uniquement le statut.
-- `changeWorkStatus(id, newWorkStatus)` : change uniquement l'état de travail.
-- `patch(id, request)` : met à jour uniquement les champs non nuls de
-  `UpdateTaskRequest` et conserve tous les autres champs.
-- `getActiveTasks()` : tâches non archivées (équivalent à `list()`).
-- `getBlockedTasks()` : tâches actives avec `waitingFor != NONE`.
-- `getTasksByServer(serverKey)` : tâches actives d'un serveur donné.
+- `search(serverKey, status, waitingFor, archived, priority, workStatus)`:
+  searches using optional criteria; `null` criteria are ignored.
+- `archive(id)`: marks a task as archived.
+- `changeStatus(id, newStatus)`: changes only the task status.
+- `changeWorkStatus(id, newWorkStatus)`: changes only the work status.
+- `patch(id, request)`: updates only the non-null fields in
+  `UpdateTaskRequest` and preserves every other field.
+- `getActiveTasks()`: returns non-archived tasks (equivalent to `list()`).
+- `getBlockedTasks()`: returns active tasks where `waitingFor != NONE`.
+- `getTasksByServer(serverKey)`: returns active tasks for a given server.
+- Prerequisite enforcement (`requires`): `create`, `update`, `patch`, and
+  `changeWorkStatus` reject (with `IllegalStateException`, exposed as HTTP
+  409) any transition to `workStatus = ON IT` or `FINISHED` while at least one
+  prerequisite is not itself `FINISHED`. The `requires` link is never removed
+  automatically; either finish the prerequisite or remove its reference
+  manually with `patch`. This rule applies only to task-to-task links
+  (`requires`), not to tasks associated with a client meeting
+  (`ClientMeeting.taskIds`).
+- Forced completion on archive: `archive(id)` always changes the task to
+  `workStatus = FINISHED`, even when prerequisites are unfinished. Archiving is
+  never blocked by the prerequisite rule.
 
-## API REST
+## REST API
 
-Base : `/api/tasks`
+Base path: `/api/tasks`
 
-| Méthode | URL              | Description                     |
-|---------|------------------|----------------------------------|
-| GET     | /api/tasks       | Liste les tâches non archivées   |
-| GET     | /api/tasks/search | Recherche filtrée (`?serverKey=&status=&waitingFor=&workStatus=`, tous optionnels) |
-| GET     | /api/tasks/blocked | Tâches actives en attente d'un tiers (`archived=false` et `waitingFor != NONE`) |
-| GET     | /api/tasks/server/{serverKey} | Tâches actives d'un serveur donné |
-| GET     | /api/tasks/{id}  | Détail d'une tâche (404 si absente) |
-| POST    | /api/tasks       | Création (201)                   |
-| PUT     | /api/tasks/{id}  | Mise à jour (404 si absente)      |
-| DELETE  | /api/tasks/{id}  | Suppression (204, 404 si absente) |
-| POST    | /api/tasks/{id}/archive | Archive la tâche (200 si succès, 404 si absente) |
-| POST    | /api/tasks/{id}/status | Change uniquement le statut, body `{"status": "FIXING"}` (200 si succès, 404 si absente) |
-| POST    | /api/tasks/{id}/work-status | Change uniquement l'état de travail, body `{"workStatus": "ON IT"}` (200 si succès, 404 si absente) |
-| POST    | /api/tasks/{id}/reorder | Déplace la tâche à un rang donné, body `{"sortOrder": 2.5}` ; recalcule et renvoie toutes les tâches actives renumbotées (200 si succès, 404 si absente) |
+| Method | URL | Description |
+|---|---|---|
+| `GET` | `/api/tasks` | Lists non-archived tasks |
+| `GET` | `/api/tasks/search` | Filtered search (`?serverKey=&status=&waitingFor=&workStatus=`, all optional) |
+| `GET` | `/api/tasks/blocked` | Active tasks waiting for another party (`archived=false` and `waitingFor != NONE`) |
+| `GET` | `/api/tasks/server/{serverKey}` | Active tasks for a given server |
+| `GET` | `/api/tasks/{id}` | Gets a task (404 if absent) |
+| `POST` | `/api/tasks` | Creates a task (201) |
+| `PUT` | `/api/tasks/{id}` | Updates a task (404 if absent) |
+| `DELETE` | `/api/tasks/{id}` | Deletes a task (204, 404 if absent) |
+| `POST` | `/api/tasks/{id}/archive` | Archives a task (200 on success, 404 if absent) |
+| `POST` | `/api/tasks/{id}/status` | Changes only the status; body `{"status": "FIXING"}` (200 on success, 404 if absent) |
+| `POST` | `/api/tasks/{id}/work-status` | Changes only the work status; body `{"workStatus": "ON IT"}` (200 on success, 404 if absent) |
+| `POST` | `/api/tasks/{id}/reorder` | Moves a task to a given position; body `{"sortOrder": 2.5}`; recalculates and returns all active tasks with normalized positions (200 on success, 404 if absent) |
 
-Ces endpoints ne font que déléguer à `TaskService` (aucune logique métier dans
-`TaskController`).
+These endpoints only delegate to `TaskService`; `TaskController` contains no
+business logic.
 
-## Réunions client
+## Client meetings
 
-Les réunions client sont stockées séparément dans `data/meetings.json`. Une
-réunion contient un identifiant, une clé serveur, une date/heure
-(`meetingAt`) et une liste d'identifiants de tâches (`taskIds`), ainsi que
-ses dates de création et de mise à jour.
+Client meetings are stored separately in `data/meetings.json`. A meeting
+contains an ID, a server key, a date/time (`meetingAt`), a list of task IDs
+(`taskIds`), and its creation and update timestamps.
 
-API REST, base `/api/meetings` :
+REST API, base path `/api/meetings`:
 
-| Méthode | URL | Description |
-|---------|-----|-------------|
-| GET | /api/meetings | Liste les réunions |
-| GET | /api/meetings/{id} | Détail d'une réunion |
-| POST | /api/meetings | Création (201) |
-| PUT | /api/meetings/{id} | Mise à jour |
-| DELETE | /api/meetings/{id} | Suppression |
+| Method | URL | Description |
+|---|---|---|
+| `GET` | `/api/meetings` | Lists meetings |
+| `GET` | `/api/meetings/{id}` | Gets a meeting |
+| `POST` | `/api/meetings` | Creates a meeting (201) |
+| `PUT` | `/api/meetings/{id}` | Updates a meeting |
+| `DELETE` | `/api/meetings/{id}` | Deletes a meeting |
 
-Les outils MCP correspondants sont `create_client_meeting`,
-`list_client_meetings`, `get_client_meeting`, `update_client_meeting` et
-`delete_client_meeting`. Les dates sont transmises au format ISO-8601 et les
-tâches sont référencées par UUID ; leurs données ne sont pas dupliquées dans
-la réunion.
+The corresponding MCP tools are `create_client_meeting`,
+`list_client_meetings`, `get_client_meeting`, `update_client_meeting`, and
+`delete_client_meeting`. Dates use ISO-8601 format and tasks are referenced by
+UUID; task data is not duplicated in the meeting. When a task is associated
+with a meeting, its due date is automatically set to the meeting date.
+Changing a meeting date also updates the due dates of its associated tasks.
 
 ## MCP
 
-Le serveur MCP démarre avec l'application Spring Boot et utilise le transport
-**Streamable HTTP** sur :
+The MCP server starts with the Spring Boot application and uses **Streamable
+HTTP** at:
 
 ```text
 http://localhost:8080/mcp
 ```
 
-La configuration se trouve dans `application.properties`. Gradle importe le
-BOM `org.springframework.ai:spring-ai-bom:2.0.1` et utilise
-`org.springframework.ai:spring-ai-starter-mcp-server-webmvc`, qui intègre le
-SDK MCP Java officiel.
+Configuration is in `application.properties`. Gradle imports the
+`org.springframework.ai:spring-ai-bom:2.0.1` BOM and uses
+`org.springframework.ai:spring-ai-starter-mcp-server-webmvc`, which includes
+the official MCP Java SDK.
 
-Outils exposés :
+Exposed tools:
 
-| Outil | Délégation métier |
-|-------|--------------------|
-| `create_task` | construit l'entrée avec `source=COPILOT`, puis `TaskService.create()` |
+| Tool | Business delegation |
+|---|---|
+| `create_task` | Builds the input with `source=COPILOT`, then calls `TaskService.create()` |
 | `list_tasks` | `TaskService.getActiveTasks()` |
 | `search_tasks` | `TaskService.search()` |
-| `update_task` | construit `UpdateTaskRequest`, puis `TaskService.patch()` |
+| `update_task` | Builds an `UpdateTaskRequest`, then calls `TaskService.patch()` |
 | `archive_task` | `TaskService.archive()` |
 | `change_status` | `TaskService.changeStatus()` |
 | `change_work_status` | `TaskService.changeWorkStatus()` |
 | `get_blocked_tasks` | `TaskService.getBlockedTasks()` |
 | `get_tasks_by_server` | `TaskService.getTasksByServer()` |
+| `create_client_meeting` | `ClientMeetingService.create()` |
+| `list_client_meetings` | `ClientMeetingService.list()` |
+| `get_client_meeting` | `ClientMeetingService.get()` |
+| `update_client_meeting` | `ClientMeetingService.update()` |
+| `delete_client_meeting` | `ClientMeetingService.delete()` |
 
-`update_task` est un patch : seuls les champs non nuls sont modifiés. Une
-valeur `null` signifie « ne pas modifier ». Les erreurs existantes
-(identifiant absent, etc.) remontent au client MCP ; les UUID, statuts,
-attentes et dates invalides produisent des messages explicites.
+`update_task` is a patch operation: only non-null fields are changed. A
+`null` value means "do not modify this field". Existing errors (for example,
+an unknown ID) are returned to the MCP client. Invalid UUIDs, statuses,
+waiting states, and dates produce explicit messages.
 
-Exemple de configuration d'un client/agent compatible MCP Streamable HTTP :
+Example configuration for an MCP Streamable HTTP-compatible client or agent:
 
 ```json
 {
@@ -192,83 +207,117 @@ Exemple de configuration d'un client/agent compatible MCP Streamable HTTP :
 }
 ```
 
-L'agent peut ensuite appeler, par exemple, `get_blocked_tasks`, puis
-`change_status` avec l'UUID choisi. Le serveur MCP HTTP n'ajoute pas
-d'authentification par défaut : ne pas exposer `/mcp` publiquement sans
-contrôle d'accès en amont.
+An agent can then call `get_blocked_tasks`, for example, followed by
+`change_status` with the selected UUID. The MCP HTTP server does not add
+authentication by default; do not expose `/mcp` publicly without access
+control in front of it.
 
 ## Frontend (SPA)
 
-`src/main/resources/static/` : `index.html` + `app.js` + `style.css`, sans
-framework JS, utilise `fetch()`. La SPA affiche les tâches actives sous forme
-de lignes empilées façon todo-list (`GET /api/tasks`). Un clic
-sur une ligne ouvre une modale contenant l'ensemble des champs de la tâche,
-dont le lien vers la demande Jira lorsqu'il est renseigné ;
-la modale se ferme avec son bouton, un clic sur l'arrière-plan ou la touche
-`Escape`.
+`src/main/resources/static/` contains `index.html`, `app.js`, and `style.css`.
+The SPA uses no JavaScript framework and calls the API with `fetch()`. It
+displays active tasks as stacked todo-list rows (`GET /api/tasks`). Clicking a
+row opens a modal containing all task fields, including the Jira request link
+when present. The modal closes through its close button, a background click,
+or the `Escape` key.
 
-Une barre latérale permet également de filtrer les tâches actives par statut,
-état de travail et serveur. Les filtres sont appliqués côté navigateur aux
-tâches déjà chargées et pourront être complétés ultérieurement par d'autres
-critères.
-La modale permet aussi de modifier les champs éditables d'une tâche puis de
-valider les changements via l'API REST. Un calendrier mensuel est affiché
-au-dessus des filtres : il charge les réunions client, permet de naviguer
-entre les mois et colore chaque réunion selon son serveur. Le bouton
-« Ajouter » ouvre un formulaire de création de réunion. Un clic sur une
-réunion du calendrier ouvre la même modale pré-remplie, permettant de la
-modifier ou de la supprimer (avec confirmation).
+Each row exposes three player-style work-status buttons (▶ PLAY → `ON IT`,
+❚❚ PAUSE → `PAUSE`, ■ FINISH → `FINISHED`) that call
+`POST /api/tasks/{id}/work-status`. Each button is either active (highlighted
+as the current state), clickable, or disabled:
 
-Les champs faisant référence à d'autres tâches (« Tâches préalables » sur une
-tâche, tâches associées à une réunion) sont présentés et édités via un
-sélecteur dédié : liste à cocher affichant le sujet des tâches (jamais leur
-UUID), filtrable par serveur, qui exclut systématiquement les tâches
-archivées ainsi que, pour « Tâches préalables », la tâche en cours d'édition
-elle-même.
+| `workStatus` | PLAY | PAUSE | FINISH |
+|---|---|---|---|
+| `ON IT` | active | clickable | clickable |
+| `PAUSE` | clickable | active | clickable |
+| `TODO` | clickable | disabled | clickable |
+| `FINISHED` | clickable | disabled | active |
 
-Les lignes utilisent un fond discret dépendant de l'échéance : les tâches sans
-date d'échéance ont un lavande grisé très pâle, tandis que les tâches datées
-progressent du bleu clair au violet foncé à mesure que l'échéance approche
-(fenêtre de 30 jours). Les tâches qui dépendent d'autres tâches restent
-visuellement grisées et rayées en diagonale par-dessus leur couleur
-d'échéance.
+PLAY and FINISH remain disabled while a prerequisite is unfinished.
 
-Les lignes peuvent être réorganisées par glisser-déposer (drag & drop HTML5
-natif, sans framework). Au dépôt, la tâche déplacée reçoit un rang
-(`sortOrder`) intermédiaire calculé à partir de ses nouvelles voisines
-affichées, ce qui met à jour l'affichage immédiatement. L'écran est ensuite
-bloqué par un calque plein écran le temps de l'appel à
-`POST /api/tasks/{id}/reorder` : le backend renumbote alors l'ensemble des
-tâches actives avec des rangs entiers croissants, évitant toute dérive
-numérique, puis la liste est rechargée et l'écran débloqué. Le champ
-`sortOrder` ne porte aucune sémantique métier (contrairement à `priority`) :
-il ne sert qu'à l'ordre d'affichage.
+A sidebar filters active tasks by status, work status, and server. Filters are
+applied in the browser to the already-loaded tasks and can be extended later
+with additional criteria.
 
-## Stockage
+The modal also edits a task's editable fields and submits changes through the
+REST API. A monthly calendar above the filters loads client meetings, supports
+month navigation, and colors each meeting by server. The **Add** button opens
+a meeting-creation form. Clicking a calendar meeting opens the same
+pre-populated modal, where the meeting can be edited or deleted after
+confirmation.
 
-Fichier `data/tasks.json` (créé automatiquement au premier `save()`, dossier
-`data/` non versionné). Pas de migration/versionnage de schéma à ce stade.
+Fields that reference other tasks (task prerequisites and tasks associated
+with a meeting) use a dedicated selector: a check-list showing task subjects,
+never UUIDs, filterable by server. Archived tasks are always excluded, as is
+the task currently being edited when selecting prerequisites.
 
-## Lancer le projet
+Rows use a subtle background based on the due date: tasks without a due date
+have a very pale grayish lavender background; dated tasks progress from light
+blue to dark violet during the seven days before their due date; overdue tasks
+turn orange. Tasks with at least one unfinished prerequisite remain visually
+grayed out and receive diagonal strike-through lines over their due-date
+color. The lines disappear as soon as all prerequisites are `FINISHED`.
+Paused tasks without an active dependency also receive diagonal lines, but
+keep their due-date color; their lines use a darker shade of that same
+gradient instead of the gray used for dependencies.
+
+Rows can be reordered with native HTML5 drag and drop, without a framework.
+When dropped, the moved task receives an intermediate `sortOrder` calculated
+from its displayed neighbors, updating the view immediately. The screen is
+then blocked by a full-screen overlay while
+`POST /api/tasks/{id}/reorder` runs. The backend renumbers all active tasks
+with ascending integer positions to avoid numeric drift, then the list is
+reloaded and the overlay is removed. `sortOrder` has no business meaning,
+unlike `priority`; it is used only for display order.
+
+## Storage
+
+`data/tasks.json` is created automatically on the first `save()` call. The
+`data/` directory is not versioned. There is currently no schema migration or
+versioning.
+
+## Task action audit log
+
+Every business action performed on a task (creation, full update, partial
+patch, status change, work-status change, archive, deletion, or a due-date
+change triggered by a meeting) is written to a dedicated file, separate from
+the regular application logs:
+
+```text
+logs/task-actions.log
+logs/task-actions-YYYY-MM-DD.log   (rolled files; one per day, retained for 90 days)
+```
+
+Configuration is in `src/main/resources/logback.xml` and uses a Logback
+`RollingFileAppender` with a daily `TimeBasedRollingPolicy`. The
+`nf.durga.audit.task` logger, used exclusively by `TaskService`, writes one
+line per action with the task UUID, subject, and change details (for example,
+`from=TODO to=ON IT`). The `logs/` directory is not versioned.
+
+This log makes it possible to replay a day's history to estimate the tasks
+that were actually worked on (status/work-status changes), independently of
+the final state stored in `data/tasks.json`.
+
+## Running the project
 
 ```powershell
 .\gradlew.bat bootRun
 ```
 
-Application disponible sur `http://localhost:8080/` (SPA) et
+The application is available at `http://localhost:8080/` (SPA) and
 `http://localhost:8080/api/tasks` (API).
 
-## Tests / build
+## Tests and build
 
 ```powershell
 .\gradlew.bat compileJava
 .\gradlew.bat test
 ```
 
-## Évolutions futures envisagées
+## Potential future improvements
 
-- Validation des entrées (`spring-boot-starter-validation` déjà présent en
-  dépendance).
-- Authentification/autorisation devant l'endpoint MCP avant toute exposition
-  hors environnement local.
-- Éventuelle suppression depuis la SPA.
+- Validate inputs (`spring-boot-starter-validation` is already present as a
+  dependency).
+- Add authentication and authorization in front of the MCP endpoint before
+  exposing it outside a local environment.
+- Add deletion from the SPA.
