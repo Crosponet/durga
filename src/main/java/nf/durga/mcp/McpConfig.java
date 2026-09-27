@@ -9,9 +9,10 @@ import org.springframework.context.annotation.Configuration;
 public class McpConfig {
 
     @Bean
-    ToolCallbackProvider taskTools(TaskMcpTools taskMcpTools) {
+    ToolCallbackProvider toolCallbacks(
+            TaskMcpTools taskMcpTools, ClientMeetingMcpTools clientMeetingMcpTools) {
         return MethodToolCallbackProvider.builder()
-                .toolObjects(taskMcpTools)
+                .toolObjects(taskMcpTools, clientMeetingMcpTools)
                 .build();
     }
 }

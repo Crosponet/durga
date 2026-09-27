@@ -17,10 +17,12 @@ import nf.durga.storage.JsonMeetingStorage;
 public class ClientMeetingService {
 
     private final JsonMeetingStorage storage;
+    private final TaskService taskService;
     private final List<ClientMeeting> meetings = new ArrayList<>();
 
-    public ClientMeetingService(JsonMeetingStorage storage) {
+    public ClientMeetingService(JsonMeetingStorage storage, TaskService taskService) {
         this.storage = storage;
+        this.taskService = taskService;
     }
 
     @PostConstruct
@@ -46,6 +48,7 @@ public class ClientMeetingService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+        taskService.setDueDate(toCreate.getTaskIds(), toCreate.getMeetingAt().toLocalDate());
         meetings.add(toCreate);
         storage.save(meetings);
         return toCreate;
@@ -60,6 +63,7 @@ public class ClientMeetingService {
                 .createdAt(existing.getCreatedAt())
                 .updatedAt(LocalDateTime.now())
                 .build();
+        taskService.setDueDate(updated.getTaskIds(), updated.getMeetingAt().toLocalDate());
         meetings.set(meetings.indexOf(existing), updated);
         storage.save(meetings);
         return updated;

@@ -26,6 +26,8 @@ let currentTask = null;
 let meetings = [];
 let displayedMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let draggedTaskId = null;
+const SERVER_COLOR_COUNT = 12;
+const DUE_DATE_GRADIENT_DAYS = 7;
 
 function showError(message) {
     statusMessageEl.textContent = message;
@@ -82,7 +84,15 @@ function applyDueDateStyle(row, dueDate) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const daysUntilDue = Math.ceil((date - today) / 86400000);
-    const urgency = 1 - Math.max(0, Math.min(30, daysUntilDue)) / 30;
+
+    if (daysUntilDue < 0) {
+        row.style.setProperty("--task-row-bg", "#f97316");
+        row.style.setProperty("--task-row-color", "#1f2933");
+        return;
+    }
+
+    const urgency = 1 - Math.max(0, Math.min(DUE_DATE_GRADIENT_DAYS, daysUntilDue))
+        / DUE_DATE_GRADIENT_DAYS;
     row.style.setProperty("--task-row-bg", interpolateColor([219, 234, 254], [76, 29, 149], urgency));
     row.style.setProperty("--task-row-color", urgency > 0.65 ? "#ffffff" : "#1f2933");
 }
@@ -107,13 +117,16 @@ function createBadge(prefix, value, fallback = "INCONNU") {
 }
 
 function serverBadgeClass(serverKey) {
-    const value = serverKey || "";
-    const hash = [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-    return `badge server-tag server-color-${hash % 6}`;
+    return `badge server-tag ${serverColorClass(serverKey)}`;
 }
 
 function serverColorClass(serverKey) {
-    return serverBadgeClass(serverKey).split(" ").find((className) => className.startsWith("server-color-"));
+    const servers = [...new Set([
+        ...allTasks.map((task) => task.serverKey),
+        ...meetings.map((meeting) => meeting.serverKey)
+    ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "fr"));
+    const serverIndex = servers.indexOf(serverKey);
+    return `server-color-${(serverIndex >= 0 ? serverIndex : 0) % SERVER_COLOR_COUNT}`;
 }
 
 function createServerBadge(serverKey) {
@@ -123,19 +136,129 @@ function createServerBadge(serverKey) {
     return badge;
 }
 
-function createTaskRow(task) {
-    const row = document.createElement("button");
-    row.className = "task-row";
-    applyDueDateStyle(row, task.dueDate);
-    if (task.requires?.length) {
-        row.classList.add("task-row-dependent");
-        row.title = "Cette tâche dépend d'autres tâches.";
+function hasUnfinishedRequirement(task) {
+    if (!task.requires || task.requires.length === 0) {
+        return false;
     }
-    row.type = "button";
+    return task.requires.some((requiredId) => {
+        const requiredTask = allTasks.find((item) => item.id === requiredId);
+        return requiredTask ? (requiredTask.workStatus || "TODO") !== "FINISHED" : false;
+    });
+}
+
+const PLAYER_ICONS = {
+    PLAY: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
+    PAUSE: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>',
+    FINISH: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10v10H3z"/></svg>'
+};
+
+const PLAYER_BUTTONS = [
+    { key: "PLAY", workStatus: "ON IT", label: "Démarrer (ON IT)" },
+    { key: "PAUSE", workStatus: "PAUSE", label: "Mettre en pause" },
+    { key: "FINISH", workStatus: "FINISHED", label: "Terminer" }
+];
+
+/**
+ * État des boutons du lecteur selon le workStatus :
+ * "active" (surbrillance), "clickable" (défaut) ou "disabled" (grisé).
+ */
+function playerButtonStates(task) {
+    const workStatus = task.workStatus || "TODO";
+    const states = {
+        "ON IT": { PLAY: "active", PAUSE: "clickable", FINISH: "clickable" },
+        PAUSE: { PLAY: "clickable", PAUSE: "active", FINISH: "clickable" },
+        TODO: { PLAY: "clickable", PAUSE: "disabled", FINISH: "clickable" },
+        FINISHED: { PLAY: "clickable", PAUSE: "disabled", FINISH: "active" }
+    }[workStatus] || { PLAY: "clickable", PAUSE: "disabled", FINISH: "clickable" };
+
+    if (hasUnfinishedRequirement(task)) {
+        ["PLAY", "FINISH"].forEach((key) => {
+            if (states[key] === "clickable") {
+                states[key] = "disabled";
+            }
+        });
+    }
+    return states;
+}
+
+function createPlayerControls(task) {
+    const controls = document.createElement("div");
+    controls.className = "player-controls";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", `État de travail : ${task.workStatus || "TODO"}`);
+    const states = playerButtonStates(task);
+    const blocked = hasUnfinishedRequirement(task);
+
+    PLAYER_BUTTONS.forEach(({ key, workStatus, label }) => {
+        const state = states[key];
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `player-button player-${key.toLowerCase()} player-${state}`;
+        button.innerHTML = PLAYER_ICONS[key];
+        button.draggable = false;
+        button.setAttribute("aria-label", label);
+        button.setAttribute("aria-pressed", String(state === "active"));
+        button.title = state === "disabled" && blocked && key !== "PAUSE"
+            ? `${label} — bloqué par une tâche préalable non terminée`
+            : label;
+        button.disabled = state === "disabled";
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (state === "clickable") {
+                changeTaskWorkStatus(task, workStatus);
+            }
+        });
+        button.addEventListener("keydown", (event) => event.stopPropagation());
+        controls.appendChild(button);
+    });
+    return controls;
+}
+
+async function changeTaskWorkStatus(task, workStatus) {
+    blockScreen();
+    try {
+        const response = await fetch(`${API_URL}/${encodeURIComponent(task.id)}/work-status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workStatus })
+        });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || `Erreur HTTP ${response.status}`);
+        }
+        const updatedTask = await response.json();
+        allTasks = allTasks.map((item) => item.id === updatedTask.id ? updatedTask : item);
+        applyFilters();
+    } catch (error) {
+        showError(`Impossible de changer l'état de travail : ${error.message}`);
+    } finally {
+        unblockScreen();
+    }
+}
+
+function createTaskRow(task) {
+    const row = document.createElement("div");
+    row.className = "task-row";
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    applyDueDateStyle(row, task.dueDate);
+    if (hasUnfinishedRequirement(task)) {
+        row.classList.add("task-row-dependent");
+        row.title = "Cette tâche dépend d'autres tâches non terminées.";
+    } else if (task.workStatus === "PAUSE") {
+        row.classList.add("task-row-paused");
+        row.title = "Cette tâche est en pause.";
+    }
     row.draggable = true;
     row.dataset.taskId = task.id;
     row.addEventListener("click", () => {
         if (!row.classList.contains("dragging")) {
+            openTaskModal(task, row);
+        }
+    });
+    row.addEventListener("keydown", (event) => {
+        if (event.target === row && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
             openTaskModal(task, row);
         }
     });
@@ -170,15 +293,19 @@ function createTaskRow(task) {
         draggedTaskId = null;
     });
 
+    const titleColumn = document.createElement("div");
+    titleColumn.className = "task-title-column";
     const title = document.createElement("h2");
     title.textContent = task.subject || "(sans sujet)";
-    row.appendChild(title);
+    titleColumn.appendChild(title);
 
-    const badgeRow = document.createElement("div");
-    badgeRow.className = "badge-row";
-    badgeRow.appendChild(createBadge("status", task.status));
-    badgeRow.appendChild(createBadge("work-status", task.workStatus || "TODO"));
-    badgeRow.appendChild(createServerBadge(task.serverKey));
+    const workStatusColumn = document.createElement("div");
+    workStatusColumn.className = "task-work-status-column";
+    workStatusColumn.appendChild(createPlayerControls(task));
+
+    const detailsColumn = document.createElement("div");
+    detailsColumn.className = "task-details-column";
+    detailsColumn.appendChild(createBadge("status", task.status));
 
     const waitingLabel = task.waitingFor === "CUSTOM" && task.waitingForCustom
         ? task.waitingForCustom
@@ -187,10 +314,25 @@ function createTaskRow(task) {
     if (waitingLabel && waitingLabel !== "NONE") {
         const waitingBadge = createBadge("waiting", task.waitingFor);
         waitingBadge.textContent = `Attente : ${waitingLabel}`;
-        badgeRow.appendChild(waitingBadge);
+        detailsColumn.appendChild(waitingBadge);
     }
 
-    row.appendChild(badgeRow);
+    if (task.tags) {
+        task.tags.split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .forEach((tag) => {
+                const tagBadge = createBadge("tag", tag);
+                tagBadge.classList.add("tag");
+                detailsColumn.appendChild(tagBadge);
+            });
+    }
+
+    const clientColumn = document.createElement("div");
+    clientColumn.className = "task-client-column";
+    clientColumn.appendChild(createServerBadge(task.serverKey));
+
+    row.append(titleColumn, workStatusColumn, detailsColumn, clientColumn);
 
     return row;
 }
@@ -442,7 +584,8 @@ function showTaskEdit(task) {
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
-                throw new Error(`Erreur HTTP ${response.status}`);
+                const message = await response.text();
+                throw new Error(message || `Erreur HTTP ${response.status}`);
             }
             const updatedTask = await response.json();
             allTasks = allTasks.map((item) => item.id === updatedTask.id ? updatedTask : item);
@@ -758,6 +901,7 @@ async function loadTasks() {
         allTasks = await response.json();
         populateServerFilter(allTasks);
         applyFilters();
+        renderCalendar();
     } catch (error) {
         showError(`Impossible de charger les tâches : ${error.message}`);
     }
@@ -771,6 +915,7 @@ async function loadMeetings() {
         }
         meetings = await response.json();
         renderCalendar();
+        applyFilters();
     } catch (error) {
         showError(`Impossible de charger les réunions : ${error.message}`);
     }

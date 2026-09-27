@@ -258,7 +258,7 @@ main {
     position: relative;
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) auto minmax(260px, 1.5fr);
+    grid-template-columns: minmax(180px, 1fr) minmax(100px, auto) minmax(220px, 1.5fr) 180px;
     align-items: center;
     gap: 16px;
     padding: 10px 16px;
@@ -301,6 +301,25 @@ main {
     z-index: 1;
 }
 
+.task-row-paused::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -18deg,
+        transparent 0,
+        transparent 18px,
+        color-mix(in srgb, var(--task-row-bg, #7c8b9d) 65%, black 25%) 18px,
+        color-mix(in srgb, var(--task-row-bg, #7c8b9d) 65%, black 25%) 22px
+    );
+    pointer-events: none;
+}
+
+.task-row-paused > * {
+    position: relative;
+    z-index: 1;
+}
+
 .task-row.dragging {
     opacity: 0.4;
 }
@@ -332,6 +351,13 @@ main {
     outline: none;
 }
 
+.task-title-column,
+.task-work-status-column,
+.task-details-column,
+.task-client-column {
+    min-width: 0;
+}
+
 .task-row h2 {
     min-width: 0;
     margin: 0;
@@ -341,11 +367,68 @@ main {
     white-space: nowrap;
 }
 
-.badge-row {
+.task-work-status-column,
+.task-client-column {
+    display: flex;
+    align-items: center;
+}
+
+.task-details-column {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-bottom: 8px;
+}
+
+.player-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.7);
+}
+
+.player-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    color: #4b5563;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.player-button svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+.player-button.player-clickable:hover,
+.player-button.player-clickable:focus-visible {
+    color: #111827;
+    background: rgba(0, 0, 0, 0.08);
+    outline: none;
+}
+
+.player-button.player-active {
+    color: #fff;
+    cursor: default;
+}
+
+.player-play.player-active { background: var(--color-work-status-on-it); }
+.player-pause.player-active { background: var(--color-work-status-pause); }
+.player-finish.player-active { background: var(--color-work-status-finished); }
+
+.player-button.player-disabled {
+    color: #c3c8cf;
+    cursor: not-allowed;
 }
 
 .badge {
@@ -367,22 +450,35 @@ main {
 .badge.work-status-finished { background: var(--color-work-status-finished); }
 
 .badge.server-color-0 { background: #2563eb; }
-.badge.server-color-1 { background: #0891b2; }
-.badge.server-color-2 { background: #7c3aed; }
-.badge.server-color-3 { background: #c2410c; }
-.badge.server-color-4 { background: #15803d; }
-.badge.server-color-5 { background: #be185d; }
+.badge.server-color-1 { background: #b91c1c; }
+.badge.server-color-2 { background: #047857; }
+.badge.server-color-3 { background: #7e22ce; }
+.badge.server-color-4 { background: #c2410c; }
+.badge.server-color-5 { background: #0f766e; }
+.badge.server-color-6 { background: #be123c; }
+.badge.server-color-7 { background: #4d7c0f; }
+.badge.server-color-8 { background: #4338ca; }
+.badge.server-color-9 { background: #a16207; }
+.badge.server-color-10 { background: #be185d; }
+.badge.server-color-11 { background: #0369a1; }
 .calendar-meeting.server-color-0 { background: #2563eb; }
-.calendar-meeting.server-color-1 { background: #0891b2; }
-.calendar-meeting.server-color-2 { background: #7c3aed; }
-.calendar-meeting.server-color-3 { background: #c2410c; }
-.calendar-meeting.server-color-4 { background: #15803d; }
-.calendar-meeting.server-color-5 { background: #be185d; }
+.calendar-meeting.server-color-1 { background: #b91c1c; }
+.calendar-meeting.server-color-2 { background: #047857; }
+.calendar-meeting.server-color-3 { background: #7e22ce; }
+.calendar-meeting.server-color-4 { background: #c2410c; }
+.calendar-meeting.server-color-5 { background: #0f766e; }
+.calendar-meeting.server-color-6 { background: #be123c; }
+.calendar-meeting.server-color-7 { background: #4d7c0f; }
+.calendar-meeting.server-color-8 { background: #4338ca; }
+.calendar-meeting.server-color-9 { background: #a16207; }
+.calendar-meeting.server-color-10 { background: #be185d; }
+.calendar-meeting.server-color-11 { background: #0369a1; }
 
 .badge.waiting-none { background: var(--color-waiting-none); }
 .badge.waiting-cloudops { background: var(--color-waiting-cloudops); }
 .badge.waiting-rnd { background: var(--color-waiting-rnd); }
 .badge.waiting-custom { background: var(--color-waiting-custom); }
+.badge.tag { background: #475569; }
 
 .empty-state {
     text-align: center;

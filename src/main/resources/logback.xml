@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <property name="TASK_ACTIONS_LOG_DIR" value="logs"/>
+
+    <!--
+        Journal métier dédié aux actions effectuées sur les tâches
+        (création, changement de statut/état de travail, archivage,
+        suppression, etc.). Fichier distinct du log applicatif, avec
+        rotation quotidienne, pour permettre de rejouer/estimer les
+        tâches travaillées sur une journée donnée.
+    -->
+    <appender name="TASK_ACTIONS" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${TASK_ACTIONS_LOG_DIR}/task-actions.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${TASK_ACTIONS_LOG_DIR}/task-actions-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>90</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="nf.durga.audit.task" level="INFO" additivity="false">
+        <appender-ref ref="TASK_ACTIONS"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

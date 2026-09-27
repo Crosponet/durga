@@ -1,5 +1,6 @@
 package nf.durga.service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,6 +11,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import nf.durga.model.Status;
@@ -25,6 +28,15 @@ import nf.durga.storage.JsonTaskStorage;
  */
 @Service
 public class TaskService {
+
+    /**
+     * Journal métier dédié aux actions sur les tâches (création, changement
+     * de statut/état de travail, archivage, suppression...). Configuré dans
+     * {@code logback-spring.xml} avec un fichier distinct et une rotation
+     * quotidienne, afin de pouvoir tracer/estimer les tâches travaillées sur
+     * une journée donnée.
+     */
+    private static final Logger AUDIT_LOG = LoggerFactory.getLogger("nf.durga.audit.task");
 
     private final JsonTaskStorage storage;
     private final List<Task> tasks = new ArrayList<>();
@@ -114,16 +126,26 @@ public class TaskService {
                 .mapToDouble(Double::doubleValue)
                 .max()
                 .orElse(0d) + 1;
+        boolean becomingArchived = Boolean.TRUE.equals(
+                Objects.requireNonNullElse(task.getArchived(), Boolean.FALSE));
+        WorkStatus requestedWorkStatus = Objects.requireNonNullElse(task.getWorkStatus(), WorkStatus.TODO);
+        WorkStatus finalWorkStatus = becomingArchived ? WorkStatus.FINISHED : requestedWorkStatus;
+        if (!becomingArchived) {
+            ensureCanTransitionWorkStatus(task.getRequires(), finalWorkStatus);
+        }
         Task toCreate = task.toBuilder()
                 .id(UUID.randomUUID())
-                .archived(Objects.requireNonNullElse(task.getArchived(), Boolean.FALSE))
-                .workStatus(Objects.requireNonNullElse(task.getWorkStatus(), WorkStatus.TODO))
+                .archived(becomingArchived)
+                .workStatus(finalWorkStatus)
                 .sortOrder(Objects.requireNonNullElse(task.getSortOrder(), nextSortOrder))
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         tasks.add(toCreate);
         storage.save(tasks);
+        AUDIT_LOG.info("CREATE task={} subject=\"{}\" status={} workStatus={} serverKey={}",
+                toCreate.getId(), toCreate.getSubject(), toCreate.getStatus(),
+                toCreate.getWorkStatus(), toCreate.getServerKey());
         return toCreate;
     }
 
@@ -131,16 +153,24 @@ public class TaskService {
         Task existing = get(id)
                 .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
 
+        boolean becomingArchived = Boolean.TRUE.equals(task.getArchived());
+        WorkStatus requestedWorkStatus = Objects.requireNonNullElse(task.getWorkStatus(),
+                Objects.requireNonNullElse(existing.getWorkStatus(), WorkStatus.TODO));
+        WorkStatus finalWorkStatus = becomingArchived ? WorkStatus.FINISHED : requestedWorkStatus;
+        if (!becomingArchived && finalWorkStatus != existing.getWorkStatus()) {
+            ensureCanTransitionWorkStatus(task.getRequires(), finalWorkStatus);
+        }
+
         Task updated = task.toBuilder()
                 .id(existing.getId())
                 .createdAt(existing.getCreatedAt())
-                .workStatus(Objects.requireNonNullElse(task.getWorkStatus(),
-                        Objects.requireNonNullElse(existing.getWorkStatus(), WorkStatus.TODO)))
+                .workStatus(finalWorkStatus)
                 .updatedAt(LocalDateTime.now())
                 .build();
 
         tasks.set(tasks.indexOf(existing), updated);
         storage.save(tasks);
+        AUDIT_LOG.info("UPDATE task={} subject=\"{}\"", updated.getId(), updated.getSubject());
         return updated;
     }
 
@@ -148,49 +178,92 @@ public class TaskService {
         Task existing = get(id)
                 .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
 
+        boolean becomingArchived = Boolean.TRUE.equals(
+                request.archived() != null ? request.archived() : existing.getArchived());
+        WorkStatus requestedWorkStatus = request.workStatus() != null
+                ? request.workStatus() : existing.getWorkStatus();
+        WorkStatus finalWorkStatus = becomingArchived ? WorkStatus.FINISHED : requestedWorkStatus;
+        List<UUID> finalRequires = request.requires() != null ? request.requires() : existing.getRequires();
+        if (!becomingArchived && finalWorkStatus != existing.getWorkStatus()) {
+            ensureCanTransitionWorkStatus(finalRequires, finalWorkStatus);
+        }
+
         Task updated = existing.toBuilder()
                 .subject(request.subject() != null ? request.subject() : existing.getSubject())
                 .description(request.description() != null ? request.description() : existing.getDescription())
                 .iteration(request.iteration() != null ? request.iteration() : existing.getIteration())
                 .status(request.status() != null ? request.status() : existing.getStatus())
-                .workStatus(request.workStatus() != null ? request.workStatus() : existing.getWorkStatus())
+                .workStatus(finalWorkStatus)
                 .waitingFor(request.waitingFor() != null ? request.waitingFor() : existing.getWaitingFor())
                 .waitingForCustom(request.waitingForCustom() != null
                         ? request.waitingForCustom()
                         : existing.getWaitingForCustom())
                 .priority(request.priority() != null ? request.priority() : existing.getPriority())
                 .dueDate(request.dueDate() != null ? request.dueDate() : existing.getDueDate())
-                .archived(request.archived() != null ? request.archived() : existing.getArchived())
+                .archived(becomingArchived)
                 .jiraUrl(request.jiraUrl() != null ? request.jiraUrl() : existing.getJiraUrl())
-                .requires(request.requires() != null ? request.requires() : existing.getRequires())
+                .requires(finalRequires)
                 .updatedAt(LocalDateTime.now())
                 .build();
 
         tasks.set(tasks.indexOf(existing), updated);
         storage.save(tasks);
+        logPatch(existing, updated);
         return updated;
     }
 
+    /** Journalise uniquement les champs qui ont réellement changé lors d'un {@link #patch}. */
+    private void logPatch(Task existing, Task updated) {
+        List<String> changes = new ArrayList<>();
+        addChange(changes, "status", existing.getStatus(), updated.getStatus());
+        addChange(changes, "workStatus", existing.getWorkStatus(), updated.getWorkStatus());
+        addChange(changes, "waitingFor", existing.getWaitingFor(), updated.getWaitingFor());
+        addChange(changes, "priority", existing.getPriority(), updated.getPriority());
+        addChange(changes, "dueDate", existing.getDueDate(), updated.getDueDate());
+        addChange(changes, "archived", existing.getArchived(), updated.getArchived());
+        addChange(changes, "subject", existing.getSubject(), updated.getSubject());
+
+        AUDIT_LOG.info("PATCH task={} subject=\"{}\" changes=[{}]",
+                updated.getId(), updated.getSubject(),
+                changes.isEmpty() ? "aucun changement de champ suivi" : String.join(", ", changes));
+    }
+
+    private void addChange(List<String> changes, String field, Object oldValue, Object newValue) {
+        if (!Objects.equals(oldValue, newValue)) {
+            changes.add(field + "=" + oldValue + "->" + newValue);
+        }
+    }
+
     public void delete(UUID id) {
+        Task existing = get(id).orElse(null);
         boolean removed = tasks.removeIf(task -> task.getId().equals(id));
         if (!removed) {
             throw new NoSuchElementException("Tâche introuvable : " + id);
         }
         storage.save(tasks);
+        AUDIT_LOG.info("DELETE task={} subject=\"{}\"",
+                id, existing != null ? existing.getSubject() : null);
     }
 
-    /** Marque une tâche comme archivée : elle disparaît de {@link #list()}. */
+    /**
+     * Marque une tâche comme archivée : elle disparaît de {@link #list()}.
+     * Une tâche qui devient archivée passe automatiquement en workStatus
+     * FINISHED (sans validation des tâches préalables : l'archivage est une
+     * action administrative qui prime sur la règle de blocage).
+     */
     public Task archive(UUID id) {
         Task existing = get(id)
                 .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
 
         Task archived = existing.toBuilder()
                 .archived(Boolean.TRUE)
+                .workStatus(WorkStatus.FINISHED)
                 .updatedAt(LocalDateTime.now())
                 .build();
 
         tasks.set(tasks.indexOf(existing), archived);
         storage.save(tasks);
+        AUDIT_LOG.info("ARCHIVE task={} subject=\"{}\"", archived.getId(), archived.getSubject());
         return archived;
     }
 
@@ -205,12 +278,18 @@ public class TaskService {
 
         tasks.set(tasks.indexOf(existing), updated);
         storage.save(tasks);
+        AUDIT_LOG.info("STATUS_CHANGE task={} subject=\"{}\" from={} to={}",
+                updated.getId(), updated.getSubject(), existing.getStatus(), newStatus);
         return updated;
     }
 
     public Task changeWorkStatus(UUID id, WorkStatus newWorkStatus) {
         Task existing = get(id)
                 .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
+
+        if (newWorkStatus != existing.getWorkStatus()) {
+            ensureCanTransitionWorkStatus(existing.getRequires(), newWorkStatus);
+        }
 
         Task updated = existing.toBuilder()
                 .workStatus(newWorkStatus)
@@ -219,7 +298,69 @@ public class TaskService {
 
         tasks.set(tasks.indexOf(existing), updated);
         storage.save(tasks);
+        AUDIT_LOG.info("WORK_STATUS_CHANGE task={} subject=\"{}\" from={} to={}",
+                updated.getId(), updated.getSubject(), existing.getWorkStatus(), newWorkStatus);
         return updated;
+    }
+
+    /**
+     * Empêche de passer une tâche en ON IT ou FINISHED tant qu'une de ses
+     * tâches préalables ({@code requires}) n'est pas elle-même FINISHED. Une
+     * tâche préalable introuvable (supprimée) n'est pas considérée comme
+     * bloquante.
+     */
+    private void ensureCanTransitionWorkStatus(List<UUID> requires, WorkStatus newWorkStatus) {
+        if (newWorkStatus != WorkStatus.ON_IT && newWorkStatus != WorkStatus.FINISHED) {
+            return;
+        }
+        if (requires == null || requires.isEmpty()) {
+            return;
+        }
+
+        List<String> unfinishedRequirements = requires.stream()
+                .map(this::get)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .filter(required -> required.getWorkStatus() != WorkStatus.FINISHED)
+                .map(required -> Objects.requireNonNullElse(required.getSubject(), required.getId().toString()))
+                .toList();
+
+        if (!unfinishedRequirements.isEmpty()) {
+            throw new IllegalStateException(
+                    "Impossible de passer cette tâche en " + newWorkStatus.value()
+                            + " : tâche(s) préalable(s) non terminée(s) : "
+                            + String.join(", ", unfinishedRequirements));
+        }
+    }
+
+    /**
+     * Affecte une même échéance à toutes les tâches indiquées.
+     *
+     * Les identifiants sont d'abord tous vérifiés afin de ne pas enregistrer
+     * une mise à jour partielle si l'une des tâches est introuvable.
+     */
+    public void setDueDate(List<UUID> taskIds, LocalDate dueDate) {
+        List<Task> tasksToUpdate = (taskIds == null ? List.<UUID>of() : taskIds).stream()
+                .distinct()
+                .map(id -> get(id).orElseThrow(() -> new NoSuchElementException(
+                        "Tâche introuvable : " + id)))
+                .toList();
+
+        if (tasksToUpdate.isEmpty()) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        for (Task task : tasksToUpdate) {
+            Task updated = task.toBuilder()
+                    .dueDate(dueDate)
+                    .updatedAt(now)
+                    .build();
+            tasks.set(tasks.indexOf(task), updated);
+            AUDIT_LOG.info("DUE_DATE_CHANGE task={} subject=\"{}\" from={} to={}",
+                    updated.getId(), updated.getSubject(), task.getDueDate(), dueDate);
+        }
+        storage.save(tasks);
     }
 
     /**
