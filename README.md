@@ -1,3 +1,12 @@
+# Statement of intent
+
+This repository is a lab. Its purpose is to explore two questions:
+
+1. Is it worthwhile to build your own personal tools now that agents have made
+   it much easier to create simple programs?
+2. How far can a purely organizational or administrative task be delegated and
+   streamlined so that it can be integrated transparently into a workflow?
+
 # Durga
 
 Client investigation tracking application.
