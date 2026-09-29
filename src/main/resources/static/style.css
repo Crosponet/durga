@@ -13,7 +13,7 @@
     --color-work-status-todo: #7c8b9d;
     --color-work-status-on-it: #2f6feb;
     --color-work-status-pause: #e6a23c;
-    --color-work-status-finished: #35a76d;
+    --color-work-status-finished: #858b94;
 
     --color-waiting-none: #9aa5b1;
     --color-waiting-cloudops: #6b46c1;
@@ -274,11 +274,23 @@ main {
     overflow: hidden;
 }
 
+.task-row.task-row-finished {
+    --task-row-bg: var(--color-work-status-finished);
+    --task-row-color: #ffffff;
+    background: var(--task-row-bg);
+    color: var(--task-row-color);
+    border-color: #747b85;
+}
+
+.task-row.task-row-finished::after {
+    display: none;
+}
+
 .task-row-dependent {
-    color: var(--color-muted);
-    background:
-        linear-gradient(rgba(241, 243, 245, 0.78), rgba(241, 243, 245, 0.78)),
-        var(--task-row-bg, var(--color-card));
+    color: var(--task-row-color, var(--color-muted));
+    background-color: var(--task-row-bg, var(--color-card));
+    background-image:
+        linear-gradient(rgba(241, 243, 245, 0.78), rgba(241, 243, 245, 0.78));
     border-color: #cfd4da;
 }
 
@@ -299,6 +311,10 @@ main {
 .task-row-dependent > * {
     position: relative;
     z-index: 1;
+}
+
+.task-row-paused {
+    background-color: var(--task-row-bg, var(--color-card));
 }
 
 .task-row-paused::after {
@@ -424,7 +440,10 @@ main {
 
 .player-play.player-active { background: var(--color-work-status-on-it); }
 .player-pause.player-active { background: var(--color-work-status-pause); }
-.player-finish.player-active { background: var(--color-work-status-finished); }
+.player-finish.player-active {
+    background: var(--color-work-status-finished);
+    color: #fff;
+}
 
 .player-button.player-disabled {
     color: #c3c8cf;
@@ -447,7 +466,10 @@ main {
 .badge.work-status-todo { background: var(--color-work-status-todo); }
 .badge.work-status-on-it { background: var(--color-work-status-on-it); }
 .badge.work-status-pause { background: var(--color-work-status-pause); }
-.badge.work-status-finished { background: var(--color-work-status-finished); }
+.badge.work-status-finished {
+    background: var(--color-work-status-finished);
+    color: #fff;
+}
 
 .badge.server-color-0 { background: #2563eb; }
 .badge.server-color-1 { background: #b91c1c; }

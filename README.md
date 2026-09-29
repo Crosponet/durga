@@ -268,7 +268,10 @@ grayed out and receive diagonal strike-through lines over their due-date
 color. The lines disappear as soon as all prerequisites are `FINISHED`.
 Paused tasks without an active dependency also receive diagonal lines, but
 keep their due-date color; their lines use a darker shade of that same
-gradient instead of the gray used for dependencies.
+gradient instead of the gray used for dependencies. Finished tasks take
+precedence over these row styles: they use a light gray background with white
+text, regardless of their due date or prerequisite state. The `FINISHED`
+status badge and active FINISH button use the same gray color.
 
 Rows can be reordered with native HTML5 drag and drop, without a framework.
 When dropped, the moved task receives an intermediate `sortOrder` calculated

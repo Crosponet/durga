@@ -242,7 +242,15 @@ function createTaskRow(task) {
     row.tabIndex = 0;
     row.setAttribute("role", "button");
     applyDueDateStyle(row, task.dueDate);
-    if (hasUnfinishedRequirement(task)) {
+    if (task.workStatus === "FINISHED") {
+        row.classList.add("task-row-finished");
+        row.title = "Cette tâche est terminée.";
+        row.style.setProperty("--task-row-bg", "#858b94");
+        row.style.setProperty("--task-row-color", "#ffffff");
+        row.style.background = "#858b94";
+        row.style.color = "#ffffff";
+        row.style.borderColor = "#747b85";
+    } else if (hasUnfinishedRequirement(task)) {
         row.classList.add("task-row-dependent");
         row.title = "Cette tâche dépend d'autres tâches non terminées.";
     } else if (task.workStatus === "PAUSE") {
