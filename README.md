@@ -230,6 +230,11 @@ row opens a modal containing all task fields, including the Jira request link
 when present. The modal closes through its close button, a background click,
 or the `Escape` key.
 
+The server badge is the leftmost fixed-width column in each task row. Finished
+tasks also show an archive icon; selecting it calls
+`POST /api/tasks/{id}/archive` and removes the task from the active list.
+An icon before each task title copies its ID to the clipboard.
+
 Each row exposes three player-style work-status buttons (▶ PLAY → `ON IT`,
 ❚❚ PAUSE → `PAUSE`, ■ FINISH → `FINISHED`) that call
 `POST /api/tasks/{id}/work-status`. Each button is either active (highlighted
@@ -260,15 +265,21 @@ with a meeting) use a dedicated selector: a check-list showing task subjects,
 never UUIDs, filterable by server. Archived tasks are always excluded, as is
 the task currently being edited when selecting prerequisites.
 
-Rows use a subtle background based on the due date: tasks without a due date
-have a very pale grayish lavender background; dated tasks progress from light
-blue to dark violet during the seven days before their due date; overdue tasks
-turn orange. Tasks with at least one unfinished prerequisite remain visually
-grayed out and receive diagonal strike-through lines over their due-date
-color. The lines disappear as soon as all prerequisites are `FINISHED`.
-Paused tasks without an active dependency also receive diagonal lines, but
-keep their due-date color; their lines use a darker shade of that same
-gradient instead of the gray used for dependencies. Finished tasks take
+Tasks with a due date show a progress bar (except when finished). Its dark
+track grows from its minimum width at seven days to its maximum width at
+fourteen days; the width is capped beyond fourteen days. The colored fill stays
+full until seven days remain, then shrinks toward the due date. Its color moves
+from green to orange between seven and one calendar day, then is red on the
+due date. The fill is a square on the due date, and overdue tasks show a purple
+dot inside a purple-outlined track. The due date is treated as the end of that
+day.
+Tasks with at least one unfinished prerequisite remain visually grayed out and
+receive diagonal strike-through lines. The lines disappear as soon as all
+prerequisites are `FINISHED`.
+Paused tasks without an active dependency never use diagonal lines: the
+diagonal pattern is reserved for dependency-blocked rows. A paused row is
+rendered in a "standby" style instead — a dashed amber border (thicker on the
+left edge), a ⏸ glyph in the left gutter and dimmed content. Finished tasks take
 precedence over these row styles: they use a light gray background with white
 text, regardless of their due date or prerequisite state. The `FINISHED`
 status badge and active FINISH button use the same gray color.

@@ -94,9 +94,30 @@ main {
 }
 
 .calendar-navigation {
-    margin: 16px 0 10px;
+    margin: 16px 0 6px;
     font-size: 0.85rem;
-    text-transform: capitalize;
+}
+
+.calendar-today-row {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+}
+
+.calendar-today {
+    padding: 3px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-card);
+    color: var(--color-muted);
+    font-size: 0.7rem;
+    cursor: pointer;
+}
+
+.calendar-today:hover,
+.calendar-today:focus-visible {
+    color: var(--color-text);
+    border-color: var(--color-text);
 }
 
 .calendar-navigation button {
@@ -127,16 +148,31 @@ main {
 }
 
 .calendar-day {
-    min-height: 42px;
+    min-height: 46px;
     padding: 3px;
     border: 1px solid var(--color-border);
     border-radius: 4px;
     background: #fafbfc;
 }
 
-.calendar-day-empty {
-    border-color: transparent;
-    background: transparent;
+.calendar-day.is-weekend {
+    background: #f1f3f5;
+}
+
+.calendar-day.is-past {
+    opacity: 0.6;
+}
+
+.calendar-day.is-today {
+    border: 2px solid #111827;
+    padding: 2px;
+    background: #fff;
+    opacity: 1;
+}
+
+.calendar-day.is-today .calendar-day-number {
+    color: #111827;
+    font-weight: 700;
 }
 
 .calendar-day-number {
@@ -258,14 +294,15 @@ main {
     position: relative;
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(100px, auto) minmax(220px, 1.5fr) 180px;
+    grid-template-columns: 180px minmax(180px, 1fr) minmax(100px, auto) minmax(220px, 1.5fr) 32px;
     align-items: center;
     gap: 16px;
-    padding: 10px 16px;
+    padding: 6px 16px;
     text-align: left;
     font: inherit;
+    --task-row-client-bg: color-mix(in srgb, var(--server-color, var(--color-card)) 15%, var(--color-card));
     color: var(--task-row-color, inherit);
-    background: var(--task-row-bg, var(--color-card));
+    background: var(--task-row-bg, var(--task-row-client-bg));
     border: 1px solid var(--color-border);
     border-radius: 8px;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -288,7 +325,7 @@ main {
 
 .task-row-dependent {
     color: var(--task-row-color, var(--color-muted));
-    background-color: var(--task-row-bg, var(--color-card));
+    background-color: var(--task-row-bg, var(--task-row-client-bg));
     background-image:
         linear-gradient(rgba(241, 243, 245, 0.78), rgba(241, 243, 245, 0.78));
     border-color: #cfd4da;
@@ -313,27 +350,44 @@ main {
     z-index: 1;
 }
 
-.task-row-paused {
-    background-color: var(--task-row-bg, var(--color-card));
+.task-row-filtered-out {
+    display: none;
 }
 
-.task-row-paused::after {
-    content: "";
+.task-row.task-row-highlighted {
+    z-index: 2;
+    border-color: #f59e0b;
+    outline: 3px solid rgba(245, 158, 11, 0.65);
+    outline-offset: 1px;
+    box-shadow: 0 3px 12px rgba(245, 158, 11, 0.35);
+}
+
+.task-row-paused {
+    background-color: var(--task-row-bg, var(--task-row-client-bg));
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.55));
+    border: 2px dashed var(--color-work-status-pause);
+    border-left-width: 6px;
+    padding-left: 28px;
+    box-shadow: none;
+}
+
+.task-row-paused::before {
+    content: "\23F8";
     position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(
-        -18deg,
-        transparent 0,
-        transparent 18px,
-        color-mix(in srgb, var(--task-row-bg, #7c8b9d) 65%, black 25%) 18px,
-        color-mix(in srgb, var(--task-row-bg, #7c8b9d) 65%, black 25%) 22px
-    );
+    top: 50%;
+    left: 8px;
+    transform: translateY(-50%);
+    font-size: 0.85rem;
+    line-height: 1;
+    color: var(--color-work-status-pause);
     pointer-events: none;
 }
 
 .task-row-paused > * {
     position: relative;
     z-index: 1;
+    opacity: 0.6;
 }
 
 .task-row.dragging {
@@ -374,6 +428,67 @@ main {
     min-width: 0;
 }
 
+.task-title-column {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.task-copy-id-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 4px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    color: inherit;
+    background: rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+}
+
+.task-copy-id-button:hover,
+.task-copy-id-button:focus-visible {
+    background: rgba(255, 255, 255, 0.32);
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+}
+
+.task-copy-id-button svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.task-archive-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    color: inherit;
+    background: rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+}
+
+.task-archive-button:hover,
+.task-archive-button:focus-visible {
+    background: rgba(255, 255, 255, 0.32);
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+}
+
+.task-archive-button svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
 .task-row h2 {
     min-width: 0;
     margin: 0;
@@ -389,17 +504,85 @@ main {
     align-items: center;
 }
 
+.task-work-status-column {
+    gap: 8px;
+}
+
+.task-milestone-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 4px;
+    border: 1px solid currentColor;
+    border-radius: 6px;
+    color: inherit;
+    background: rgba(255, 255, 255, 0.16);
+    cursor: pointer;
+}
+
+.task-milestone-button:hover,
+.task-milestone-button:focus-visible {
+    background: rgba(255, 255, 255, 0.32);
+    outline: 2px solid currentColor;
+    outline-offset: 1px;
+}
+
+.task-milestone-button svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+}
+
 .task-details-column {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 6px;
+}
+
+.due-progress {
+    display: inline-block;
+    flex: 0 0 auto;
+    min-width: 40px;
+    max-width: 80px;
+    height: 12px;
+    border-radius: 999px;
+    background: #65758b;
+    overflow: hidden;
+    cursor: help;
+}
+
+.due-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    transition: width 300ms linear, background-color 300ms linear;
+}
+
+.due-progress.due-progress-overdue {
+    border: 1px solid #7e22ce;
+}
+
+.due-progress-overdue .due-progress-fill {
+    width: 6px !important;
+    height: 6px;
+    margin: 2px;
+    border-radius: 50%;
+}
+
+.due-progress-today .due-progress-fill {
+    height: 100%;
+    border-radius: 2px;
 }
 
 .player-controls {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    padding: 2px;
+    padding: 1px;
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.7);
@@ -409,8 +592,8 @@ main {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -452,7 +635,7 @@ main {
 
 .badge {
     display: inline-block;
-    padding: 2px 10px;
+    padding: 1px 10px;
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
@@ -471,30 +654,23 @@ main {
     color: #fff;
 }
 
-.badge.server-color-0 { background: #2563eb; }
-.badge.server-color-1 { background: #b91c1c; }
-.badge.server-color-2 { background: #047857; }
-.badge.server-color-3 { background: #7e22ce; }
-.badge.server-color-4 { background: #c2410c; }
-.badge.server-color-5 { background: #0f766e; }
-.badge.server-color-6 { background: #be123c; }
-.badge.server-color-7 { background: #4d7c0f; }
-.badge.server-color-8 { background: #4338ca; }
-.badge.server-color-9 { background: #a16207; }
-.badge.server-color-10 { background: #be185d; }
-.badge.server-color-11 { background: #0369a1; }
-.calendar-meeting.server-color-0 { background: #2563eb; }
-.calendar-meeting.server-color-1 { background: #b91c1c; }
-.calendar-meeting.server-color-2 { background: #047857; }
-.calendar-meeting.server-color-3 { background: #7e22ce; }
-.calendar-meeting.server-color-4 { background: #c2410c; }
-.calendar-meeting.server-color-5 { background: #0f766e; }
-.calendar-meeting.server-color-6 { background: #be123c; }
-.calendar-meeting.server-color-7 { background: #4d7c0f; }
-.calendar-meeting.server-color-8 { background: #4338ca; }
-.calendar-meeting.server-color-9 { background: #a16207; }
-.calendar-meeting.server-color-10 { background: #be185d; }
-.calendar-meeting.server-color-11 { background: #0369a1; }
+.server-color-0 { --server-color: #2563eb; }
+.server-color-1 { --server-color: #b91c1c; }
+.server-color-2 { --server-color: #047857; }
+.server-color-3 { --server-color: #7e22ce; }
+.server-color-4 { --server-color: #c2410c; }
+.server-color-5 { --server-color: #0f766e; }
+.server-color-6 { --server-color: #be123c; }
+.server-color-7 { --server-color: #4d7c0f; }
+.server-color-8 { --server-color: #4338ca; }
+.server-color-9 { --server-color: #a16207; }
+.server-color-10 { --server-color: #be185d; }
+.server-color-11 { --server-color: #0369a1; }
+
+.badge[class*="server-color-"],
+.calendar-meeting[class*="server-color-"] {
+    background: var(--server-color);
+}
 
 .badge.waiting-none { background: var(--color-waiting-none); }
 .badge.waiting-cloudops { background: var(--color-waiting-cloudops); }
@@ -747,6 +923,10 @@ main {
     .task-row {
         grid-template-columns: 1fr;
         gap: 8px;
+    }
+
+    .task-archive-placeholder {
+        display: none;
     }
 
     .task-details {

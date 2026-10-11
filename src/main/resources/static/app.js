@@ -13,21 +13,53 @@ const resetFiltersEl = document.getElementById("reset-filters");
 const filterCountEl = document.getElementById("filter-count");
 const blockOverlayEl = document.getElementById("block-overlay");
 const calendarEl = document.getElementById("calendar");
-const calendarMonthEl = document.getElementById("calendar-month");
-const previousMonthEl = document.getElementById("previous-month");
-const nextMonthEl = document.getElementById("next-month");
+const calendarRangeEl = document.getElementById("calendar-range");
+const previousWeekEl = document.getElementById("previous-week");
+const nextWeekEl = document.getElementById("next-week");
+const calendarTodayEl = document.getElementById("calendar-today");
 const addMeetingEl = document.getElementById("add-meeting");
 const meetingModalEl = document.getElementById("meeting-modal");
 const meetingModalCloseEl = document.getElementById("meeting-modal-close");
 const meetingModalContentEl = document.getElementById("meeting-modal-content");
+const milestoneModalEl = document.getElementById("milestone-modal");
+const milestoneModalCloseEl = document.getElementById("milestone-modal-close");
+const milestoneFormEl = document.getElementById("milestone-form");
+let milestoneTask = null;
+let milestoneSourceElement = null;
 let lastFocusedElement = null;
 let allTasks = [];
 let currentTask = null;
 let meetings = [];
-let displayedMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-let draggedTaskId = null;
 const SERVER_COLOR_COUNT = 12;
-const DUE_DATE_GRADIENT_DAYS = 7;
+const MINUTE_MS = 60000;
+const MINUTES_PER_DAY = 1440;
+const DUE_PROGRESS_MIN_DAYS = 7;
+const DUE_PROGRESS_MAX_DAYS = 14;
+const DUE_PROGRESS_MIN_WIDTH = 40;
+const DUE_PROGRESS_MAX_WIDTH = 80;
+const DUE_PROGRESS_HEIGHT = 12;
+const CALENDAR_WEEKS = 4;
+const CALENDAR_WEEKS_BEFORE = 1;
+let weekStart = defaultWeekStart();
+let draggedTaskId = null;
+let highlightedRequirementIds = new Set();
+
+function startOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date, amount) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+function startOfWeek(date) {
+    const day = startOfDay(date);
+    return addDays(day, -((day.getDay() + 6) % 7));
+}
+
+function defaultWeekStart() {
+    return addDays(startOfWeek(new Date()), -7 * CALENDAR_WEEKS_BEFORE);
+}
 
 function showError(message) {
     statusMessageEl.textContent = message;
@@ -67,34 +99,120 @@ function toLocalDate(value) {
     return null;
 }
 
-function interpolateColor(start, end, ratio) {
-    const clampedRatio = Math.max(0, Math.min(1, ratio));
-    const channel = (index) => Math.round(start[index] + (end[index] - start[index]) * clampedRatio);
-    return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
+function formatDayCount(days) {
+    return `${days} jour${days > 1 ? "s" : ""}`;
 }
 
-function applyDueDateStyle(row, dueDate) {
-    const date = toLocalDate(dueDate);
-    if (!date || Number.isNaN(date.getTime())) {
-        row.style.setProperty("--task-row-bg", "#f1eff8");
-        row.style.setProperty("--task-row-color", "#1f2933");
+function interpolateColor(start, end, ratio) {
+    const channels = start.map((channel, index) =>
+        Math.round(channel + (end[index] - channel) * ratio));
+    return `rgb(${channels.join(", ")})`;
+}
+
+function dueProgressColor(daysUntilDue) {
+    const green = [34, 197, 94];
+    const orange = [249, 115, 22];
+    const red = [220, 38, 38];
+
+    if (daysUntilDue >= DUE_PROGRESS_MIN_DAYS) {
+        return `rgb(${green.join(", ")})`;
+    }
+    if (daysUntilDue > 1) {
+        const ratio = (DUE_PROGRESS_MIN_DAYS - daysUntilDue) / (DUE_PROGRESS_MIN_DAYS - 1);
+        return interpolateColor(green, orange, ratio);
+    }
+    return `rgb(${red.join(", ")})`;
+}
+
+function updateDueProgress(progress, task) {
+    const dueDay = toLocalDate(task.dueDate);
+    if (!dueDay || Number.isNaN(dueDay.getTime())) {
         return;
     }
+    const due = new Date(dueDay.getFullYear(), dueDay.getMonth(), dueDay.getDate(), 23, 59, 59);
+    const now = new Date();
+    const remainingMinutes = (due - now) / MINUTE_MS;
+    const remainingDays = remainingMinutes / MINUTES_PER_DAY;
+    const today = startOfDay(now);
+    const daysUntilDue = Math.round((startOfDay(dueDay) - today) / (MINUTES_PER_DAY * MINUTE_MS));
+    const isDueToday = daysUntilDue === 0;
+    const widthRatio = Math.max(0, Math.min(1,
+        (daysUntilDue - DUE_PROGRESS_MIN_DAYS) / (DUE_PROGRESS_MAX_DAYS - DUE_PROGRESS_MIN_DAYS)));
+    const trackWidth = DUE_PROGRESS_MIN_WIDTH
+        + widthRatio * (DUE_PROGRESS_MAX_WIDTH - DUE_PROGRESS_MIN_WIDTH);
+    const fillWidth = daysUntilDue <= 0
+        ? DUE_PROGRESS_HEIGHT
+        : daysUntilDue === 1
+            ? DUE_PROGRESS_HEIGHT + 4
+            : daysUntilDue < DUE_PROGRESS_MIN_DAYS
+                ? DUE_PROGRESS_HEIGHT + 4
+                    + ((daysUntilDue - 1) / (DUE_PROGRESS_MIN_DAYS - 1))
+                        * (DUE_PROGRESS_MIN_WIDTH - DUE_PROGRESS_HEIGHT - 4)
+                : trackWidth;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const daysUntilDue = Math.ceil((date - today) / 86400000);
+    progress.classList.toggle("due-progress-overdue", remainingMinutes <= 0);
+    progress.classList.toggle("due-progress-today", isDueToday && remainingMinutes > 0);
+    progress.style.width = `${trackWidth}px`;
+    progress.setAttribute("role", "progressbar");
+    progress.setAttribute("aria-valuemin", "0");
+    progress.setAttribute("aria-valuemax", "100");
+    progress.setAttribute("aria-valuenow", String(remainingMinutes <= 0
+        ? 0
+        : Math.round(fillWidth / trackWidth * 100)));
+    const fill = progress.firstElementChild;
+    fill.style.width = remainingMinutes <= 0 ? "6px" : `${fillWidth}px`;
+    fill.style.backgroundColor = remainingMinutes <= 0 ? "#7e22ce" : dueProgressColor(daysUntilDue);
 
-    if (daysUntilDue < 0) {
-        row.style.setProperty("--task-row-bg", "#f97316");
-        row.style.setProperty("--task-row-color", "#1f2933");
-        return;
+    const dueLabel = dueDay.toLocaleDateString("fr-FR");
+    if (remainingMinutes <= 0) {
+        const lateDays = Math.max(1, Math.ceil(-remainingMinutes / MINUTES_PER_DAY));
+        progress.title = `En retard de ${formatDayCount(lateDays)} (échéance ${dueLabel})`;
+    } else {
+        const days = Math.floor(remainingMinutes / MINUTES_PER_DAY);
+        progress.title = days < 1
+            ? `Échéance aujourd'hui (${dueLabel})`
+            : `Échéance dans ${formatDayCount(days)} (${dueLabel})`;
     }
+    progress.setAttribute("aria-label", progress.title);
+}
 
-    const urgency = 1 - Math.max(0, Math.min(DUE_DATE_GRADIENT_DAYS, daysUntilDue))
-        / DUE_DATE_GRADIENT_DAYS;
-    row.style.setProperty("--task-row-bg", interpolateColor([219, 234, 254], [76, 29, 149], urgency));
-    row.style.setProperty("--task-row-color", urgency > 0.65 ? "#ffffff" : "#1f2933");
+function createDueProgress(task) {
+    const dueDay = toLocalDate(task.dueDate);
+    if (!dueDay || Number.isNaN(dueDay.getTime())) {
+        return null;
+    }
+    const progress = document.createElement("span");
+    progress.className = "due-progress";
+    progress.dataset.taskId = task.id;
+
+    const fill = document.createElement("span");
+    fill.className = "due-progress-fill";
+    progress.appendChild(fill);
+    updateDueProgress(progress, task);
+    return progress;
+}
+
+function refreshDueProgresses() {
+    const tasksById = new Map(allTasks.map((task) => [task.id, task]));
+    taskListEl.querySelectorAll(".due-progress").forEach((progress) => {
+        const task = tasksById.get(progress.dataset.taskId);
+        if (task) {
+            updateDueProgress(progress, task);
+        }
+    });
+}
+
+function scheduleDueProgressRefresh() {
+    const now = new Date();
+    const nextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    setTimeout(() => {
+        refreshDueProgresses();
+        scheduleDueProgressRefresh();
+    }, nextDay - now);
+}
+
+function formatDateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function meetingDayKey(meeting) {
@@ -102,7 +220,7 @@ function meetingDayKey(meeting) {
     if (!date || Number.isNaN(date.getTime())) {
         return "";
     }
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return formatDateKey(date);
 }
 
 function badgeClass(prefix, value) {
@@ -144,6 +262,45 @@ function hasUnfinishedRequirement(task) {
         const requiredTask = allTasks.find((item) => item.id === requiredId);
         return requiredTask ? (requiredTask.workStatus || "TODO") !== "FINISHED" : false;
     });
+}
+
+function unfinishedRequirementIds(task) {
+    return (task.requires || []).filter((requiredId) => {
+        const requiredTask = allTasks.find((item) => item.id === requiredId);
+        return requiredTask && (requiredTask.workStatus || "TODO") !== "FINISHED";
+    });
+}
+
+function highlightBlockingRequirements(task) {
+    clearBlockingRequirementHighlight();
+    const requirementIds = unfinishedRequirementIds(task);
+    if (requirementIds.length === 0) {
+        return;
+    }
+    highlightedRequirementIds = new Set(requirementIds);
+    requirementIds.forEach((requiredId) => {
+        const row = taskListEl.querySelector(`[data-task-id="${CSS.escape(requiredId)}"]`);
+        if (row) {
+            row.classList.remove("task-row-filtered-out");
+            row.classList.add("task-row-highlighted");
+        }
+    });
+}
+
+function clearBlockingRequirementHighlight() {
+    if (highlightedRequirementIds.size === 0) {
+        return;
+    }
+    highlightedRequirementIds.forEach((requiredId) => {
+        const row = taskListEl.querySelector(`[data-task-id="${CSS.escape(requiredId)}"]`);
+        if (row) {
+            row.classList.remove("task-row-highlighted");
+            if (row.dataset.filteredOut === "true") {
+                row.classList.add("task-row-filtered-out");
+            }
+        }
+    });
+    highlightedRequirementIds.clear();
 }
 
 const PLAYER_ICONS = {
@@ -236,12 +393,43 @@ async function changeTaskWorkStatus(task, workStatus) {
     }
 }
 
+async function archiveTask(task) {
+    blockScreen();
+    try {
+        const response = await fetch(`${API_URL}/${encodeURIComponent(task.id)}/archive`, {
+            method: "POST"
+        });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || `Erreur HTTP ${response.status}`);
+        }
+        allTasks = allTasks.filter((item) => item.id !== task.id);
+        applyFilters();
+    } catch (error) {
+        showError(`Impossible d'archiver la tâche : ${error.message}`);
+    } finally {
+        unblockScreen();
+    }
+}
+
+async function copyTaskId(task, button) {
+    try {
+        await navigator.clipboard.writeText(task.id);
+        button.title = "ID copié";
+        window.setTimeout(() => {
+            button.title = "Copier l'identifiant";
+        }, 1500);
+    } catch (error) {
+        showError(`Impossible de copier l'identifiant : ${error.message}`);
+    }
+}
+
 function createTaskRow(task) {
     const row = document.createElement("div");
     row.className = "task-row";
     row.tabIndex = 0;
     row.setAttribute("role", "button");
-    applyDueDateStyle(row, task.dueDate);
+    row.classList.add(serverColorClass(task.serverKey));
     if (task.workStatus === "FINISHED") {
         row.classList.add("task-row-finished");
         row.title = "Cette tâche est terminée.";
@@ -259,6 +447,14 @@ function createTaskRow(task) {
     }
     row.draggable = true;
     row.dataset.taskId = task.id;
+    row.addEventListener("mouseenter", () => highlightBlockingRequirements(task));
+    row.addEventListener("mouseleave", clearBlockingRequirementHighlight);
+    row.addEventListener("focusin", () => highlightBlockingRequirements(task));
+    row.addEventListener("focusout", (event) => {
+        if (!row.contains(event.relatedTarget)) {
+            clearBlockingRequirementHighlight();
+        }
+    });
     row.addEventListener("click", () => {
         if (!row.classList.contains("dragging")) {
             openTaskModal(task, row);
@@ -303,17 +499,47 @@ function createTaskRow(task) {
 
     const titleColumn = document.createElement("div");
     titleColumn.className = "task-title-column";
+    const copyIdButton = document.createElement("button");
+    copyIdButton.type = "button";
+    copyIdButton.className = "task-copy-id-button";
+    copyIdButton.setAttribute("aria-label", "Copier l'identifiant");
+    copyIdButton.title = "Copier l'identifiant";
+    copyIdButton.draggable = false;
+    copyIdButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h11a2 2 0 0 1 2 2v13h-2V5H8zm-3 4h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2m0 2v11h11V9z"/></svg>';
+    copyIdButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        copyTaskId(task, copyIdButton);
+    });
+    copyIdButton.addEventListener("keydown", (event) => event.stopPropagation());
     const title = document.createElement("h2");
     title.textContent = task.subject || "(sans sujet)";
-    titleColumn.appendChild(title);
+    titleColumn.append(copyIdButton, title);
 
     const workStatusColumn = document.createElement("div");
     workStatusColumn.className = "task-work-status-column";
-    workStatusColumn.appendChild(createPlayerControls(task));
+    const milestoneButton = document.createElement("button");
+    milestoneButton.type = "button";
+    milestoneButton.className = "task-milestone-button";
+    milestoneButton.setAttribute("aria-label", "Ajouter un jalon");
+    milestoneButton.title = "Ajouter un jalon";
+    milestoneButton.draggable = false;
+    milestoneButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h2v20H5zm3 1h11l-2.5 4.5L19 12H8z"/></svg>';
+    milestoneButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openMilestoneModal(task, milestoneButton);
+    });
+    milestoneButton.addEventListener("keydown", (event) => event.stopPropagation());
+    workStatusColumn.append(createPlayerControls(task), milestoneButton);
 
     const detailsColumn = document.createElement("div");
     detailsColumn.className = "task-details-column";
     detailsColumn.appendChild(createBadge("status", task.status));
+    if (task.workStatus !== "FINISHED") {
+        const dueProgress = createDueProgress(task);
+        if (dueProgress) {
+            detailsColumn.appendChild(dueProgress);
+        }
+    }
 
     const waitingLabel = task.waitingFor === "CUSTOM" && task.waitingForCustom
         ? task.waitingForCustom
@@ -340,7 +566,27 @@ function createTaskRow(task) {
     clientColumn.className = "task-client-column";
     clientColumn.appendChild(createServerBadge(task.serverKey));
 
-    row.append(titleColumn, workStatusColumn, detailsColumn, clientColumn);
+    row.append(clientColumn, titleColumn, workStatusColumn, detailsColumn);
+
+    if (task.workStatus === "FINISHED") {
+        const archiveButton = document.createElement("button");
+        archiveButton.type = "button";
+        archiveButton.className = "task-archive-button";
+        archiveButton.setAttribute("aria-label", "Archiver la tâche");
+        archiveButton.title = "Archiver la tâche";
+        archiveButton.draggable = false;
+        archiveButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v4H3zM5 10h14v10H5zM9 13v2h6v-2z"/></svg>';
+        archiveButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            archiveTask(task);
+        });
+        archiveButton.addEventListener("keydown", (event) => event.stopPropagation());
+        row.appendChild(archiveButton);
+    } else {
+        const archivePlaceholder = document.createElement("span");
+        archivePlaceholder.className = "task-archive-placeholder";
+        row.appendChild(archivePlaceholder);
+    }
 
     return row;
 }
@@ -624,11 +870,12 @@ function closeTaskModal() {
 }
 
 function renderCalendar() {
-    const year = displayedMonth.getFullYear();
-    const month = displayedMonth.getMonth();
-    calendarMonthEl.textContent = displayedMonth.toLocaleDateString("fr-FR", {
-        month: "long", year: "numeric"
-    });
+    const totalDays = CALENDAR_WEEKS * 7;
+    const lastDay = addDays(weekStart, totalDays - 1);
+    const rangeOptions = { day: "numeric", month: "short" };
+    const startLabel = weekStart.toLocaleDateString("fr-FR", rangeOptions);
+    const endLabel = lastDay.toLocaleDateString("fr-FR", rangeOptions);
+    calendarRangeEl.textContent = `${startLabel} – ${endLabel} ${lastDay.getFullYear()}`;
     calendarEl.innerHTML = "";
     ["L", "M", "M", "J", "V", "S", "D"].forEach((day) => {
         const weekday = document.createElement("span");
@@ -637,32 +884,37 @@ function renderCalendar() {
         calendarEl.appendChild(weekday);
     });
 
-    const firstDay = new Date(year, month, 1);
-    const offset = (firstDay.getDay() + 6) % 7;
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    for (let index = 0; index < offset + daysInMonth; index += 1) {
+    const today = startOfDay(new Date());
+    for (let index = 0; index < totalDays; index += 1) {
+        const current = addDays(weekStart, index);
         const cell = document.createElement("div");
         cell.className = "calendar-day";
-        if (index < offset) {
-            cell.classList.add("calendar-day-empty");
-        } else {
-            const day = index - offset + 1;
-            const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-            const number = document.createElement("span");
-            number.className = "calendar-day-number";
-            number.textContent = day;
-            cell.appendChild(number);
-            meetings.filter((meeting) => meetingDayKey(meeting) === key).forEach((meeting) => {
-                const meetingLink = document.createElement("button");
-                meetingLink.type = "button";
-                meetingLink.className = `calendar-meeting ${serverColorClass(meeting.serverKey)}`;
-                const date = toDateTime(meeting.meetingAt);
-                meetingLink.textContent = `${date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} ${meeting.serverKey || "?"}`;
-                meetingLink.title = `Réunion ${meeting.serverKey || "sans serveur"}`;
-                meetingLink.addEventListener("click", () => showMeetingDetails(meeting));
-                cell.appendChild(meetingLink);
-            });
+        if (current.getTime() === today.getTime()) {
+            cell.classList.add("is-today");
+        } else if (current < today) {
+            cell.classList.add("is-past");
         }
+        if (current.getDay() === 0 || current.getDay() === 6) {
+            cell.classList.add("is-weekend");
+        }
+
+        const key = formatDateKey(current);
+        const number = document.createElement("span");
+        number.className = "calendar-day-number";
+        number.textContent = current.getDate() === 1
+            ? current.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })
+            : current.getDate();
+        cell.appendChild(number);
+        meetings.filter((meeting) => meetingDayKey(meeting) === key).forEach((meeting) => {
+            const meetingLink = document.createElement("button");
+            meetingLink.type = "button";
+            meetingLink.className = `calendar-meeting ${serverColorClass(meeting.serverKey)}`;
+            const date = toDateTime(meeting.meetingAt);
+            meetingLink.textContent = `${date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} ${meeting.serverKey || "?"}`;
+            meetingLink.title = `Réunion ${meeting.serverKey || "sans serveur"}`;
+            meetingLink.addEventListener("click", () => showMeetingDetails(meeting));
+            cell.appendChild(meetingLink);
+        });
         calendarEl.appendChild(cell);
     }
 }
@@ -782,9 +1034,71 @@ function closeMeetingModal() {
     document.body.classList.remove("modal-open");
 }
 
+function openMilestoneModal(task, sourceElement) {
+    milestoneTask = task;
+    milestoneSourceElement = sourceElement;
+    milestoneFormEl.reset();
+    const error = milestoneFormEl.querySelector(".form-error");
+    error.hidden = true;
+    error.textContent = "";
+    milestoneFormEl.querySelector("button[type=submit]").disabled = false;
+    milestoneModalEl.hidden = false;
+    document.body.classList.add("modal-open");
+    milestoneFormEl.elements.text.focus();
+}
+
+function closeMilestoneModal() {
+    if (milestoneModalEl.hidden) {
+        return;
+    }
+    milestoneModalEl.hidden = true;
+    document.body.classList.remove("modal-open");
+    milestoneTask = null;
+    milestoneSourceElement?.focus();
+    milestoneSourceElement = null;
+}
+
+async function submitMilestone(event) {
+    event.preventDefault();
+    const text = milestoneFormEl.elements.text.value.trim();
+    const error = milestoneFormEl.querySelector(".form-error");
+    if (!text || !milestoneTask) {
+        error.textContent = "Le texte du jalon est obligatoire.";
+        error.hidden = false;
+        return;
+    }
+    const submitButton = milestoneFormEl.querySelector("button[type=submit]");
+    submitButton.disabled = true;
+    try {
+        const response = await fetch(`${API_URL}/${encodeURIComponent(milestoneTask.id)}/milestone`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        });
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || `Erreur HTTP ${response.status}`);
+        }
+        const updatedTask = await response.json();
+        allTasks = allTasks.map((item) => item.id === updatedTask.id ? updatedTask : item);
+        milestoneSourceElement = null;
+        closeMilestoneModal();
+        applyFilters();
+    } catch (requestError) {
+        error.textContent = `Impossible d'ajouter le jalon : ${requestError.message}`;
+        error.hidden = false;
+        submitButton.disabled = false;
+    }
+}
+
 function renderTasks(tasks) {
+    clearBlockingRequirementHighlight();
     taskListEl.innerHTML = "";
     filterCountEl.textContent = `${tasks.length} tâche${tasks.length > 1 ? "s" : ""}`;
+
+    const visibleTaskIds = new Set((tasks || []).map((task) => task.id));
+    const sortedTasks = [...allTasks].sort((left, right) =>
+        (left.sortOrder ?? Infinity) - (right.sortOrder ?? Infinity));
 
     if (!tasks || tasks.length === 0) {
         const empty = document.createElement("div");
@@ -793,11 +1107,15 @@ function renderTasks(tasks) {
             ? "Aucune tâche pour le moment."
             : "Aucune tâche ne correspond aux filtres.";
         taskListEl.appendChild(empty);
-        return;
     }
 
-    tasks.forEach((task) => {
-        taskListEl.appendChild(createTaskRow(task));
+    sortedTasks.forEach((task) => {
+        const row = createTaskRow(task);
+        if (!visibleTaskIds.has(task.id)) {
+            row.dataset.filteredOut = "true";
+            row.classList.add("task-row-filtered-out");
+        }
+        taskListEl.appendChild(row);
     });
 }
 
@@ -951,14 +1269,21 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !meetingModalEl.hidden) {
         closeMeetingModal();
     }
+    if (event.key === "Escape" && !milestoneModalEl.hidden) {
+        closeMilestoneModal();
+    }
 });
 
-previousMonthEl.addEventListener("click", () => {
-    displayedMonth = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() - 1, 1);
+previousWeekEl.addEventListener("click", () => {
+    weekStart = addDays(weekStart, -7);
     renderCalendar();
 });
-nextMonthEl.addEventListener("click", () => {
-    displayedMonth = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() + 1, 1);
+nextWeekEl.addEventListener("click", () => {
+    weekStart = addDays(weekStart, 7);
+    renderCalendar();
+});
+calendarTodayEl.addEventListener("click", () => {
+    weekStart = defaultWeekStart();
     renderCalendar();
 });
 addMeetingEl.addEventListener("click", () => openMeetingModal());
@@ -968,7 +1293,20 @@ meetingModalEl.addEventListener("click", (event) => {
         closeMeetingModal();
     }
 });
+milestoneModalCloseEl.addEventListener("click", closeMilestoneModal);
+milestoneModalEl.addEventListener("click", (event) => {
+    if (event.target.matches("[data-close-milestone-modal]")) {
+        closeMilestoneModal();
+    }
+});
+milestoneFormEl.addEventListener("submit", submitMilestone);
+milestoneFormEl.elements.text.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        milestoneFormEl.requestSubmit();
+    }
+});
 
 loadTasks();
 renderCalendar();
 loadMeetings();
+scheduleDueProgressRefresh();

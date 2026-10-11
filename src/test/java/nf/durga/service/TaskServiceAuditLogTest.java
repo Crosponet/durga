@@ -68,4 +68,24 @@ class TaskServiceAuditLogTest {
                 .contains(task.getId().toString())
                 .contains("from=INVESTIGATION to=FIXING");
     }
+
+    @Test
+    void addMilestoneIsWrittenToTaskActionsLogFile() throws IOException {
+        Task task = Task.builder()
+                .id(UUID.randomUUID())
+                .subject("Suivi jalon")
+                .status(Status.INVESTIGATION)
+                .workStatus(WorkStatus.TODO)
+                .sortOrder(1d)
+                .build();
+        when(taskStorage.load()).thenReturn(List.of(task));
+        taskService.init();
+
+        taskService.addMilestone(task.getId(), "Logs récupérés");
+
+        String content = Files.readString(todayLogFile);
+        assertThat(content).contains("MILESTONE")
+                .contains(task.getId().toString())
+                .contains("text=\"Logs récupérés\"");
+    }
 }

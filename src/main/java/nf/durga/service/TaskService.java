@@ -2,6 +2,7 @@ package nf.durga.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -37,6 +38,8 @@ public class TaskService {
      * une journée donnée.
      */
     private static final Logger AUDIT_LOG = LoggerFactory.getLogger("nf.durga.audit.task");
+
+    private static final DateTimeFormatter MILESTONE_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final JsonTaskStorage storage;
     private final List<Task> tasks = new ArrayList<>();
@@ -280,6 +283,36 @@ public class TaskService {
         storage.save(tasks);
         AUDIT_LOG.info("STATUS_CHANGE task={} subject=\"{}\" from={} to={}",
                 updated.getId(), updated.getSubject(), existing.getStatus(), newStatus);
+        return updated;
+    }
+
+    /**
+     * Ajoute un jalon horodaté ({@code [yyyy-MM-dd HH:mm] texte}) sur une
+     * nouvelle ligne à la fin de la description de la tâche.
+     */
+    public Task addMilestone(UUID id, String text) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("Le texte du jalon est obligatoire.");
+        }
+        Task existing = get(id)
+                .orElseThrow(() -> new NoSuchElementException("Tâche introuvable : " + id));
+
+        LocalDateTime now = LocalDateTime.now();
+        String milestone = "[" + now.format(MILESTONE_TIMESTAMP) + "] " + text.strip();
+        String description = existing.getDescription();
+        String newDescription = description == null || description.isBlank()
+                ? milestone
+                : description.stripTrailing() + "\n" + milestone;
+
+        Task updated = existing.toBuilder()
+                .description(newDescription)
+                .updatedAt(now)
+                .build();
+
+        tasks.set(tasks.indexOf(existing), updated);
+        storage.save(tasks);
+        AUDIT_LOG.info("MILESTONE task={} subject=\"{}\" text=\"{}\"",
+                updated.getId(), updated.getSubject(), text.strip());
         return updated;
     }
 

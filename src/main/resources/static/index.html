@@ -23,9 +23,12 @@
                                 type="button">Ajouter</button>
                     </div>
                     <div class="calendar-navigation">
-                        <button id="previous-month" type="button" aria-label="Mois précédent">‹</button>
-                        <strong id="calendar-month"></strong>
-                        <button id="next-month" type="button" aria-label="Mois suivant">›</button>
+                        <button id="previous-week" type="button" aria-label="Semaine précédente">‹</button>
+                        <strong id="calendar-range"></strong>
+                        <button id="next-week" type="button" aria-label="Semaine suivante">›</button>
+                    </div>
+                    <div class="calendar-today-row">
+                        <button id="calendar-today" class="calendar-today" type="button">Aujourd'hui</button>
                     </div>
                     <div id="calendar" class="calendar" aria-live="polite"></div>
                 </section>
@@ -95,6 +98,27 @@
                         aria-label="Fermer">×</button>
             </div>
             <div id="meeting-modal-content" class="modal-content"></div>
+        </section>
+    </div>
+
+    <div id="milestone-modal" class="modal" hidden>
+        <div class="modal-backdrop" data-close-milestone-modal></div>
+        <section class="modal-dialog" role="dialog" aria-modal="true"
+                 aria-labelledby="milestone-modal-title">
+            <div class="modal-header">
+                <h2 id="milestone-modal-title">Ajouter un jalon</h2>
+                <button id="milestone-modal-close" class="modal-close" type="button"
+                        aria-label="Fermer">×</button>
+            </div>
+            <div class="modal-content">
+                <form id="milestone-form" class="task-form">
+                    <label>Jalon<textarea name="text" rows="3" required></textarea></label>
+                    <p class="form-error" role="alert" hidden></p>
+                    <div class="form-actions">
+                        <button class="button button-primary" type="submit">OK</button>
+                    </div>
+                </form>
+            </div>
         </section>
     </div>
 

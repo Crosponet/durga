@@ -97,6 +97,11 @@ public class TaskController {
         return taskService.changeWorkStatus(id, request.workStatus());
     }
 
+    @PostMapping("/{id}/milestone")
+    public Task addMilestone(@PathVariable UUID id, @RequestBody AddMilestoneRequest request) {
+        return taskService.addMilestone(id, request.text());
+    }
+
     @PostMapping("/{id}/reorder")
     public List<Task> reorder(@PathVariable UUID id, @RequestBody ReorderRequest request) {
         return taskService.reorder(id, request.sortOrder());
@@ -109,5 +114,8 @@ public class TaskController {
     }
 
     public record ReorderRequest(Double sortOrder) {
+    }
+
+    public record AddMilestoneRequest(String text) {
     }
 }

@@ -131,5 +131,43 @@ class TaskServiceTest {
 
         assertEquals(WorkStatus.FINISHED, archived.getWorkStatus());
     }
+
+    @Test
+    void addMilestoneAppendsTimestampedLineToExistingDescription() {
+        UUID taskId = UUID.randomUUID();
+        when(taskStorage.load()).thenReturn(List.of(
+                Task.builder().id(taskId).subject("Jalon").sortOrder(1d)
+                        .workStatus(WorkStatus.TODO).description("Description initiale\n").build()));
+        taskService.init();
+
+        Task updated = taskService.addMilestone(taskId, "  Analyse terminée  ");
+
+        assertThat(updated.getDescription())
+                .matches("Description initiale\\n\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}\\] Analyse terminée");
+    }
+
+    @Test
+    void addMilestoneOnEmptyDescriptionHasNoLeadingNewLine() {
+        UUID taskId = UUID.randomUUID();
+        when(taskStorage.load()).thenReturn(List.of(
+                Task.builder().id(taskId).subject("Jalon").sortOrder(1d).workStatus(WorkStatus.TODO).build()));
+        taskService.init();
+
+        Task updated = taskService.addMilestone(taskId, "Premier jalon");
+
+        assertThat(updated.getDescription())
+                .matches("\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}\\] Premier jalon");
+    }
+
+    @Test
+    void addMilestoneRejectsBlankText() {
+        UUID taskId = UUID.randomUUID();
+        when(taskStorage.load()).thenReturn(List.of(
+                Task.builder().id(taskId).subject("Jalon").sortOrder(1d).workStatus(WorkStatus.TODO).build()));
+        taskService.init();
+
+        assertThatThrownBy(() -> taskService.addMilestone(taskId, "   "))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
 
