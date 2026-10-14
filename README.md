@@ -79,7 +79,7 @@ Agent -> MCP ---/
 |---|---|---|
 | `id` | `UUID` | Generated automatically when the task is created |
 | `subject` | `String` | |
-| `description` | `String` | |
+| `description` | `String` | Markdown source; rendered in the task detail modal |
 | `iteration` | `Integer` | |
 | `serverKey` | `String` | |
 | `status` | `Status` | `DATA_GRABBING`, `INVESTIGATION`, `FIXING`, `REPORT` |
@@ -229,6 +229,21 @@ displays active tasks as stacked todo-list rows (`GET /api/tasks`). Clicking a
 row opens a modal containing all task fields, including the Jira request link
 when present. The modal closes through its close button, a background click,
 or the `Escape` key.
+
+Task descriptions are rendered as Markdown in the modal's read view, including
+headings, emphasis, lists, links, blockquotes, code blocks and tables. Editing
+still uses a plain textarea containing the original Markdown; saving preserves
+that source in the REST API, MCP and JSON storage. Saving or cancelling returns
+to the rendered read view. Existing descriptions are interpreted as Markdown
+without a data migration. A single line break follows standard Markdown rules;
+use a blank line for a new paragraph or two trailing spaces for a hard break.
+
+Rendering uses **markdown-it 15.0.2**, whose unmodified browser bundle and MIT
+license are stored in `static/vendor/markdown-it-15.0.2/` and served locally
+(no CDN, frontend build step or backend dependency). Raw HTML is disabled and
+shown as text; markdown-it's built-in unsafe-link filtering is retained.
+There are no plugins, automatic URL linking, syntax highlighting or live preview.
+Other task fields remain plain text.
 
 The server badge is the leftmost fixed-width column in each task row. Finished
 tasks also show an archive icon; selecting it calls
