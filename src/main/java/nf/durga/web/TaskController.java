@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 import nf.durga.model.Status;
@@ -20,6 +21,7 @@ import nf.durga.model.Task;
 import nf.durga.model.WaitingFor;
 import nf.durga.model.WorkStatus;
 import nf.durga.service.TaskService;
+import nf.durga.service.TaskView;
 
 /**
  * Expose les tâches via HTTP. Ne contient aucune logique métier : chaque
@@ -36,75 +38,96 @@ public class TaskController {
     }
 
     @GetMapping
-    public List<Task> list() {
+    public List<TaskView> list() {
         return taskService.list();
     }
 
     @GetMapping("/search")
-    public List<Task> search(@RequestParam(required = false) String serverKey,
-                              @RequestParam(required = false) Status status,
-                              @RequestParam(required = false) WaitingFor waitingFor,
-                              @RequestParam(required = false) String workStatus) {
+    public List<TaskView> search(@RequestParam(required = false) String serverKey,
+                                 @RequestParam(required = false) Status status,
+                                 @RequestParam(required = false) WaitingFor waitingFor,
+                                 @RequestParam(required = false) String workStatus) {
         return taskService.search(serverKey, status, waitingFor, null, null,
                 workStatus == null ? null : WorkStatus.fromValue(workStatus));
     }
 
     @GetMapping("/blocked")
-    public List<Task> getBlockedTasks() {
+    public List<TaskView> getBlockedTasks() {
         return taskService.getBlockedTasks();
     }
 
     @GetMapping("/server/{serverKey}")
-    public List<Task> getTasksByServer(@PathVariable String serverKey) {
+    public List<TaskView> getTasksByServer(@PathVariable String serverKey) {
         return taskService.getTasksByServer(serverKey);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Task> get(@PathVariable UUID id) {
+    public ResponseEntity<TaskView> get(@PathVariable UUID id) {
         return taskService.get(id)
-                .map(ResponseEntity::ok)
+                .map(task -> response(task, HttpStatus.OK))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Task> create(@RequestBody Task task) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.create(task));
+    public ResponseEntity<TaskView> create(@RequestBody Task task) {
+        return response(taskService.create(task), HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    public Task update(@PathVariable UUID id, @RequestBody Task task) {
-        return taskService.update(id, task);
+    public ResponseEntity<TaskView> update(@PathVariable UUID id, @RequestBody Task task,
+                                           @RequestHeader(value = "If-Match", required = false) String etag) {
+        return response(taskService.update(id, task, revision(etag)), HttpStatus.OK);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        taskService.delete(id);
+    public ResponseEntity<Void> delete(@PathVariable UUID id,
+                                       @RequestHeader(value = "If-Match", required = false) String etag) {
+        taskService.delete(id, revision(etag));
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/archive")
-    public Task archive(@PathVariable UUID id) {
-        return taskService.archive(id);
+    public ResponseEntity<TaskView> archive(@PathVariable UUID id,
+                                            @RequestHeader(value = "If-Match", required = false) String etag) {
+        return response(taskService.archive(id, revision(etag)), HttpStatus.OK);
     }
 
     @PostMapping("/{id}/status")
-    public Task changeStatus(@PathVariable UUID id, @RequestBody ChangeStatusRequest request) {
-        return taskService.changeStatus(id, request.status());
+    public ResponseEntity<TaskView> changeStatus(@PathVariable UUID id, @RequestBody ChangeStatusRequest request,
+                                                 @RequestHeader(value = "If-Match", required = false) String etag) {
+        return response(taskService.changeStatus(id, request.status(), revision(etag)), HttpStatus.OK);
     }
 
     @PostMapping("/{id}/work-status")
-    public Task changeWorkStatus(@PathVariable UUID id, @RequestBody ChangeWorkStatusRequest request) {
-        return taskService.changeWorkStatus(id, request.workStatus());
+    public ResponseEntity<TaskView> changeWorkStatus(@PathVariable UUID id, @RequestBody ChangeWorkStatusRequest request,
+                                                     @RequestHeader(value = "If-Match", required = false) String etag) {
+        return response(taskService.changeWorkStatus(id, request.workStatus(), revision(etag)), HttpStatus.OK);
     }
 
     @PostMapping("/{id}/milestone")
-    public Task addMilestone(@PathVariable UUID id, @RequestBody AddMilestoneRequest request) {
-        return taskService.addMilestone(id, request.text());
+    public ResponseEntity<TaskView> addMilestone(@PathVariable UUID id, @RequestBody AddMilestoneRequest request,
+                                                 @RequestHeader(value = "If-Match", required = false) String etag) {
+        return response(taskService.addMilestone(id, request.text(), revision(etag)), HttpStatus.OK);
     }
 
     @PostMapping("/{id}/reorder")
-    public List<Task> reorder(@PathVariable UUID id, @RequestBody ReorderRequest request) {
+    public List<TaskView> reorder(@PathVariable UUID id, @RequestBody ReorderRequest request) {
         return taskService.reorder(id, request.sortOrder());
+    }
+
+    @PostMapping("/refresh")
+    public List<TaskView> refresh() {
+        return taskService.refresh();
+    }
+
+    private ResponseEntity<TaskView> response(TaskView task, HttpStatus status) {
+        return ResponseEntity.status(status).eTag("\"" + task.revision() + "\"").body(task);
+    }
+
+    private String revision(String etag) {
+        if (etag == null || !etag.matches("\"(?:[0-9a-f]{40}|[0-9a-f]{64})\""))
+            throw new IllegalArgumentException("If-Match must contain the quoted Task ETag returned by a read.");
+        return etag.substring(1, etag.length() - 1);
     }
 
     public record ChangeStatusRequest(Status status) {

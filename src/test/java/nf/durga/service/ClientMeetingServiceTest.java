@@ -2,6 +2,9 @@ package nf.durga.service;
 
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.anyList;
+import static org.assertj.core.api.Assertions.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -66,5 +69,17 @@ class ClientMeetingServiceTest {
                 .build());
 
         verify(taskService).setDueDate(List.of(taskId), LocalDate.of(2026, 10, 10));
+    }
+
+    @Test
+    void localSaveFailureExplicitlyReportsAlreadyPublishedTaskChanges() {
+        UUID taskId = UUID.randomUUID();
+        doThrow(new JsonMeetingStorage.MeetingStorageException("disk full", new java.io.IOException()))
+                .when(meetingStorage).save(anyList());
+        assertThatThrownBy(() -> meetingService.create(ClientMeeting.builder().serverKey("server")
+                .meetingAt(LocalDateTime.of(2026, 10, 3, 14, 30)).taskIds(List.of(taskId)).build()))
+                .isInstanceOf(JsonMeetingStorage.MeetingStorageException.class)
+                .hasMessageContaining("Task due dates were published");
+        assertThat(meetingService.list()).isEmpty();
     }
 }

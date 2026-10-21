@@ -30,17 +30,17 @@ public class ClientMeetingService {
         meetings.addAll(storage.load());
     }
 
-    public List<ClientMeeting> list() {
+    public synchronized List<ClientMeeting> list() {
         return List.copyOf(meetings);
     }
 
-    public Optional<ClientMeeting> get(UUID id) {
+    public synchronized Optional<ClientMeeting> get(UUID id) {
         return meetings.stream()
                 .filter(meeting -> meeting.getId().equals(id))
                 .findFirst();
     }
 
-    public ClientMeeting create(ClientMeeting meeting) {
+    public synchronized ClientMeeting create(ClientMeeting meeting) {
         ensureNoDuplicate(meeting, null);
         LocalDateTime now = LocalDateTime.now();
         ClientMeeting toCreate = meeting.toBuilder()
@@ -49,12 +49,13 @@ public class ClientMeetingService {
                 .updatedAt(now)
                 .build();
         taskService.setDueDate(toCreate.getTaskIds(), toCreate.getMeetingAt().toLocalDate());
-        meetings.add(toCreate);
-        storage.save(meetings);
+        List<ClientMeeting> candidate = new ArrayList<>(meetings);
+        candidate.add(toCreate);
+        saveAfterTaskChanges(candidate, toCreate.getTaskIds());
         return toCreate;
     }
 
-    public ClientMeeting update(UUID id, ClientMeeting meeting) {
+    public synchronized ClientMeeting update(UUID id, ClientMeeting meeting) {
         ClientMeeting existing = get(id)
                 .orElseThrow(() -> new NoSuchElementException("Réunion introuvable : " + id));
         ensureNoDuplicate(meeting, id);
@@ -64,17 +65,33 @@ public class ClientMeetingService {
                 .updatedAt(LocalDateTime.now())
                 .build();
         taskService.setDueDate(updated.getTaskIds(), updated.getMeetingAt().toLocalDate());
-        meetings.set(meetings.indexOf(existing), updated);
-        storage.save(meetings);
+        List<ClientMeeting> candidate = new ArrayList<>(meetings);
+        candidate.set(candidate.indexOf(existing), updated);
+        saveAfterTaskChanges(candidate, updated.getTaskIds());
         return updated;
     }
 
-    public void delete(UUID id) {
-        boolean removed = meetings.removeIf(meeting -> meeting.getId().equals(id));
+    public synchronized void delete(UUID id) {
+        List<ClientMeeting> candidate = new ArrayList<>(meetings);
+        boolean removed = candidate.removeIf(meeting -> meeting.getId().equals(id));
         if (!removed) {
             throw new NoSuchElementException("Réunion introuvable : " + id);
         }
-        storage.save(meetings);
+        storage.save(candidate);
+        meetings.clear();
+        meetings.addAll(candidate);
+    }
+
+    private void saveAfterTaskChanges(List<ClientMeeting> candidate, List<UUID> taskIds) {
+        try {
+            storage.save(candidate);
+        } catch (JsonMeetingStorage.MeetingStorageException e) {
+            throw new JsonMeetingStorage.MeetingStorageException(
+                    taskIds == null || taskIds.isEmpty() ? "Local meeting was not saved."
+                            : "Task due dates were published, but the local meeting was not saved.", e);
+        }
+        meetings.clear();
+        meetings.addAll(candidate);
     }
 
     private void ensureNoDuplicate(ClientMeeting meeting, UUID excludedId) {

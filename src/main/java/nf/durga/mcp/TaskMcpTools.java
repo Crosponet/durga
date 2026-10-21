@@ -18,6 +18,7 @@ import nf.durga.model.WaitingFor;
 import nf.durga.model.WorkStatus;
 import nf.durga.service.TaskService;
 import nf.durga.service.UpdateTaskRequest;
+import nf.durga.service.TaskView;
 
 @Component
 public class TaskMcpTools {
@@ -29,7 +30,7 @@ public class TaskMcpTools {
     }
 
     @Tool(name = "create_task", description = "Crée une nouvelle tâche d'investigation dans Durga.")
-    public Task createTask(
+    public TaskView createTask(
             @ToolParam(description = "Sujet de la tâche") String subject,
             @ToolParam(description = "Description détaillée", required = false) String description,
             @ToolParam(description = "Clé du serveur concerné", required = false) String serverKey,
@@ -61,12 +62,12 @@ public class TaskMcpTools {
     }
 
     @Tool(name = "list_tasks", description = "Retourne toutes les tâches actives non archivées.")
-    public List<Task> listTasks() {
+    public List<TaskView> listTasks() {
         return taskService.getActiveTasks();
     }
 
     @Tool(name = "search_tasks", description = "Recherche des tâches avec des filtres tous optionnels.")
-    public List<Task> searchTasks(
+    public List<TaskView> searchTasks(
             @ToolParam(description = "Clé serveur", required = false) String serverKey,
             @ToolParam(description = "Statut", required = false) String status,
             @ToolParam(description = "État de travail: TODO, ON IT, PAUSE ou FINISHED",
@@ -85,8 +86,9 @@ public class TaskMcpTools {
 
     @Tool(name = "update_task",
             description = "Met à jour uniquement les champs non nuls fournis pour une tâche existante.")
-    public Task updateTask(
+    public TaskView updateTask(
             @ToolParam(description = "UUID de la tâche") String id,
+            @ToolParam(description = "Révision retournée par la lecture de la tâche") String expectedRevision,
             @ToolParam(description = "Nouveau sujet", required = false) String subject,
             @ToolParam(description = "Nouvelle description", required = false) String description,
             @ToolParam(description = "Nouvelle itération", required = false) Integer iteration,
@@ -102,7 +104,7 @@ public class TaskMcpTools {
             @ToolParam(description = "Nouvel état d'archivage", required = false) Boolean archived,
             @ToolParam(description = "Nouveau lien vers la demande Jira", required = false) String jiraUrl,
             @ToolParam(description = "Nouvelles tâches préalables par UUID", required = false)
-                    List<String> requires) {
+            List<String> requires) {
         UpdateTaskRequest request = new UpdateTaskRequest(
                 subject,
                 description,
@@ -116,39 +118,47 @@ public class TaskMcpTools {
                 archived,
                 jiraUrl,
                 parseIds(requires));
-        return taskService.patch(parseId(id), request);
+        return taskService.patch(parseId(id), request, expectedRevision);
     }
 
     @Tool(name = "archive_task", description = "Archive une tâche existante.")
-    public Task archiveTask(@ToolParam(description = "UUID de la tâche") String id) {
-        return taskService.archive(parseId(id));
+    public TaskView archiveTask(@ToolParam(description = "UUID de la tâche") String id,
+                                @ToolParam(description = "Révision retournée par la lecture de la tâche") String expectedRevision) {
+        return taskService.archive(parseId(id), expectedRevision);
     }
 
     @Tool(name = "change_status", description = "Change uniquement le statut d'une tâche existante.")
-    public Task changeStatus(
+    public TaskView changeStatus(
             @ToolParam(description = "UUID de la tâche") String id,
+            @ToolParam(description = "Révision retournée par la lecture de la tâche") String expectedRevision,
             @ToolParam(description = "Nouveau statut") String status) {
-        return taskService.changeStatus(parseId(id), parseStatus(status));
+        return taskService.changeStatus(parseId(id), parseStatus(status), expectedRevision);
     }
 
     @Tool(name = "change_work_status", description = "Change uniquement l'état de travail d'une tâche existante.")
-    public Task changeWorkStatus(
+    public TaskView changeWorkStatus(
             @ToolParam(description = "UUID de la tâche") String id,
+            @ToolParam(description = "Révision retournée par la lecture de la tâche") String expectedRevision,
             @ToolParam(description = "Nouvel état de travail: TODO, ON IT, PAUSE ou FINISHED")
-                    String workStatus) {
-        return taskService.changeWorkStatus(parseId(id), parseWorkStatus(workStatus));
+            String workStatus) {
+        return taskService.changeWorkStatus(parseId(id), parseWorkStatus(workStatus), expectedRevision);
     }
 
     @Tool(name = "get_blocked_tasks",
             description = "Retourne les tâches non archivées dont l'attente est différente de NONE.")
-    public List<Task> getBlockedTasks() {
+    public List<TaskView> getBlockedTasks() {
         return taskService.getBlockedTasks();
     }
 
     @Tool(name = "get_tasks_by_server", description = "Retourne les tâches actives d'un serveur.")
-    public List<Task> getTasksByServer(
+    public List<TaskView> getTasksByServer(
             @ToolParam(description = "Clé du serveur") String serverKey) {
         return taskService.getTasksByServer(serverKey);
+    }
+
+    @Tool(name = "refresh_tasks", description = "Synchronise explicitement les tâches avec le dépôt partagé, sans fusion.")
+    public List<TaskView> refreshTasks() {
+        return taskService.refresh();
     }
 
     private UUID parseId(String value) {

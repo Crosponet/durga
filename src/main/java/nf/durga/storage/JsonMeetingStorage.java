@@ -10,13 +10,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import nf.durga.model.ClientMeeting;
 
 @Component
 public class JsonMeetingStorage {
 
-    private static final Path DATA_FILE = Path.of("data", "meetings.json");
+    private final Path dataFile;
+
+    @Autowired
+    public JsonMeetingStorage() {
+        this(Path.of("data", "meetings.json"));
+    }
+
+    public JsonMeetingStorage(Path dataFile) {
+        this.dataFile = dataFile;
+    }
 
     private final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -24,22 +34,22 @@ public class JsonMeetingStorage {
 
     public List<ClientMeeting> load() {
         try {
-            if (!Files.exists(DATA_FILE)) {
+            if (!Files.exists(dataFile)) {
                 return Collections.emptyList();
             }
-            ClientMeeting[] meetings = objectMapper.readValue(DATA_FILE.toFile(), ClientMeeting[].class);
+            ClientMeeting[] meetings = objectMapper.readValue(dataFile.toFile(), ClientMeeting[].class);
             return List.of(meetings);
         } catch (IOException exception) {
-            throw new MeetingStorageException("Impossible de lire " + DATA_FILE, exception);
+            throw new MeetingStorageException("Impossible de lire " + dataFile, exception);
         }
     }
 
     public void save(List<ClientMeeting> meetings) {
         try {
-            Files.createDirectories(DATA_FILE.getParent());
-            objectMapper.writeValue(DATA_FILE.toFile(), meetings);
+            Files.createDirectories(dataFile.getParent());
+            objectMapper.writeValue(dataFile.toFile(), meetings);
         } catch (IOException exception) {
-            throw new MeetingStorageException("Impossible d'écrire " + DATA_FILE, exception);
+            throw new MeetingStorageException("Impossible d'écrire " + dataFile, exception);
         }
     }
 

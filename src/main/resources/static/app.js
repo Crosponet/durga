@@ -1,4 +1,10 @@
 const API_URL = "/api/tasks";
+const descriptionMarkdown = window.markdownit({
+    html: false,
+    linkify: false,
+    typographer: false,
+    breaks: false
+});
 
 const taskListEl = document.getElementById("task-list");
 const statusMessageEl = document.getElementById("status-message");
@@ -376,7 +382,7 @@ async function changeTaskWorkStatus(task, workStatus) {
     try {
         const response = await fetch(`${API_URL}/${encodeURIComponent(task.id)}/work-status`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "If-Match": `"${task.revision}"` },
             body: JSON.stringify({ workStatus })
         });
         if (!response.ok) {
@@ -397,7 +403,8 @@ async function archiveTask(task) {
     blockScreen();
     try {
         const response = await fetch(`${API_URL}/${encodeURIComponent(task.id)}/archive`, {
-            method: "POST"
+            method: "POST",
+            headers: { "If-Match": `"${task.revision}"` }
         });
         if (!response.ok) {
             const message = await response.text();
@@ -599,6 +606,19 @@ function addDetail(parent, label, value) {
     parent.append(term, description);
 }
 
+function addDescriptionDetail(parent, value) {
+    const term = document.createElement("dt");
+    term.textContent = "Description";
+    const description = document.createElement("dd");
+    description.className = "task-description";
+    if (value == null) {
+        description.textContent = "-";
+    } else {
+        description.innerHTML = descriptionMarkdown.render(value);
+    }
+    parent.append(term, description);
+}
+
 function addLinkDetail(parent, label, url) {
     const term = document.createElement("dt");
     term.textContent = label;
@@ -687,7 +707,7 @@ function createTaskForm(task) {
     form.className = "task-form";
     form.innerHTML = `
         <label>Sujet<input name="subject" required maxlength="500"></label>
-        <label>Description<textarea name="description" rows="4"></textarea></label>
+        <label>Description (Markdown)<textarea name="description" rows="4"></textarea></label>
         <div class="form-grid">
             <label>Statut<select name="status" required>
                 <option value="DATA_GRABBING">Collecte de données</option>
@@ -755,7 +775,7 @@ function createTaskForm(task) {
 function showTaskDetails(task) {
     const details = document.createElement("dl");
     details.className = "task-details";
-    addDetail(details, "Description", task.description);
+    addDescriptionDetail(details, task.description);
     addDetail(details, "Statut", task.status);
     addDetail(details, "État de travail", task.workStatus || "TODO");
     addDetail(details, "Priorité", task.priority);
@@ -826,15 +846,14 @@ function showTaskEdit(task) {
             tags: data.get("tags").trim() || null,
             priority: data.get("priority") ? Number(data.get("priority")) : null,
             jiraUrl: jiraUrl || null,
-            requires,
-            sortOrder: task.sortOrder
+            requires
         };
         const submitButton = form.querySelector("button[type=submit]");
         submitButton.disabled = true;
         try {
             const response = await fetch(`${API_URL}/${encodeURIComponent(task.id)}`, {
                 method: "PUT",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "If-Match": `"${task.revision}"` },
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
@@ -993,6 +1012,7 @@ function openMeetingModal(meeting) {
             }
             renderCalendar();
             closeMeetingModal();
+            await loadTasks();
         } catch (requestError) {
             error.textContent = `Impossible d'enregistrer la réunion : ${requestError.message}`;
             error.hidden = false;
@@ -1072,7 +1092,7 @@ async function submitMilestone(event) {
     try {
         const response = await fetch(`${API_URL}/${encodeURIComponent(milestoneTask.id)}/milestone`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "If-Match": `"${milestoneTask.revision}"` },
             body: JSON.stringify({ text })
         });
         if (!response.ok) {
@@ -1220,6 +1240,12 @@ async function handleTaskDrop(draggedId, targetId, dropBefore) {
 
 async function loadTasks() {
     try {
+        const sync = await fetch(`${API_URL}/refresh`, { method: "POST" });
+        if (!sync.ok) {
+            showError(`Synchronisation indisponible : ${await sync.text()}. Lecture locale uniquement ; rechargez avant de modifier.`);
+        } else {
+            statusMessageEl.hidden = true;
+        }
         const response = await fetch(API_URL);
         if (!response.ok) {
             throw new Error(`Erreur HTTP ${response.status}`);
@@ -1248,6 +1274,7 @@ async function loadMeetings() {
 }
 
 statusFilterEl.addEventListener("change", applyFilters);
+document.getElementById("refresh-tasks").addEventListener("click", () => loadTasks());
 workStatusFilterEl.addEventListener("change", applyFilters);
 serverFilterEl.addEventListener("change", applyFilters);
 resetFiltersEl.addEventListener("click", () => {
