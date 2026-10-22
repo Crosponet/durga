@@ -14,6 +14,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -126,7 +127,7 @@ public class GitTaskStorage implements TaskStorage {
     }
 
     @Override
-    public synchronized void refresh() {
+    public synchronized List<VersionedTask> refresh() {
         if (!Objects.equals(branch, git.require("symbolic-ref", "--short", "HEAD")))
             throw new TaskStorageException("Task checkout branch changed; restart Durga with the intended branch");
         clean();
@@ -136,7 +137,7 @@ public class GitTaskStorage implements TaskStorage {
             throw new TaskStorageException("Local Task history is ahead or diverged. Inspect Git history and reconcile manually; Durga will not merge or publish it.");
         }
         git.require("merge", "--ff-only", upstream);
-        load();
+        return load();
     }
 
     @Override
@@ -153,6 +154,15 @@ public class GitTaskStorage implements TaskStorage {
         if (Files.isSymbolicLink(directory)) throw new TaskStorageException("Task directory cannot be a symlink");
         if (!Files.exists(directory)) return List.of();
         try (var paths = Files.list(directory)) {
+            Map<String, String> revisions = new HashMap<>();
+            String tree = git.require("ls-tree", "-r", "-z", "--format=%(objectname)%x09%(path)",
+                    "HEAD", "--", "tasks/");
+            for (String entry : tree.split("\0")) {
+                if (entry.isEmpty()) continue;
+                int separator = entry.indexOf('\t');
+                if (separator < 0) throw new TaskStorageException("Invalid Git Task tree entry");
+                revisions.put(entry.substring(separator + 1), entry.substring(0, separator));
+            }
             List<VersionedTask> result = new ArrayList<>();
             for (Path file : paths.sorted().toList()) {
                 if (!file.getFileName().toString().endsWith(".json")) continue;
@@ -163,7 +173,8 @@ public class GitTaskStorage implements TaskStorage {
                 if (task.getId() == null || !file.getFileName().toString().equals(task.getId() + ".json")) {
                     throw new TaskStorageException("Task UUID must match filename: " + file);
                 }
-                String revision = git.require("rev-parse", "--verify", "HEAD:tasks/" + task.getId() + ".json");
+                String revision = revisions.get("tasks/" + task.getId() + ".json");
+                if (revision == null) throw new TaskStorageException("Task document is not committed: " + file);
                 result.add(new VersionedTask(task, revision));
             }
             return List.copyOf(result);
@@ -175,8 +186,7 @@ public class GitTaskStorage implements TaskStorage {
     @Override
     public synchronized List<VersionedTask> checkpoint(Map<UUID, String> expected,
                                                        Function<List<VersionedTask>, Checkpoint> operation) {
-        refresh();
-        List<VersionedTask> snapshot = load();
+        List<VersionedTask> snapshot = refresh();
         for (var entry : expected.entrySet()) {
             String actual = snapshot.stream().filter(v -> v.task().getId().equals(entry.getKey()))
                     .map(VersionedTask::revision).findFirst().orElse(null);

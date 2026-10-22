@@ -89,6 +89,18 @@ test("explicit reload reports synchronization failure and still reads local Task
     assert.match(elements.get("status-message").textContent, /Remote unavailable/);
 });
 
+test("successful reload uses the refresh response without another Task request", async () => {
+    const { context, calls } = application();
+    context.fetch = async (url, options) => {
+        calls.push({ url, options });
+        return { ok: true, json: async () => [{ id: "refreshed-task", revision: "a".repeat(40) }] };
+    };
+    await vm.runInContext("loadTasks()", context);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "/api/tasks/refresh");
+    assert.equal(vm.runInContext("allTasks[0].id", context), "refreshed-task");
+});
+
 test("full update sends the form's revision, not local ordering metadata", async () => {
     const { context, calls } = application();
     let submit;
@@ -134,7 +146,7 @@ test("meeting save remains revision-free and reloads affected Tasks", async () =
     };
     vm.runInContext(`createMeetingForm = () => fakeForm; closeMeetingModal = () => {}; openMeetingModal();`, context);
     await submit({ preventDefault() {} });
-    assert.deepEqual(calls.map((call) => call.url), ["/api/meetings", "/api/tasks/refresh", "/api/tasks"]);
+    assert.deepEqual(calls.map((call) => call.url), ["/api/meetings", "/api/tasks/refresh"]);
     assert.deepEqual(JSON.parse(calls[0].options.body).taskIds, ["task-id"]);
     assert.equal(calls[0].options.headers["If-Match"], undefined);
 });

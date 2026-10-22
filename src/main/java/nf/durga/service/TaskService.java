@@ -38,8 +38,8 @@ public class TaskService {
     }
 
     public synchronized List<TaskView> refresh() {
-        storage.refresh();
-        return list();
+        return views(storage.refresh()).stream()
+                .filter(v -> !Boolean.TRUE.equals(v.task().getArchived())).toList();
     }
 
     private List<TaskView> views(List<VersionedTask> tasks) {

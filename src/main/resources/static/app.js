@@ -1243,14 +1243,15 @@ async function loadTasks() {
         const sync = await fetch(`${API_URL}/refresh`, { method: "POST" });
         if (!sync.ok) {
             showError(`Synchronisation indisponible : ${await sync.text()}. Lecture locale uniquement ; rechargez avant de modifier.`);
+            const response = await fetch(API_URL);
+            if (!response.ok) {
+                throw new Error(`Erreur HTTP ${response.status}`);
+            }
+            allTasks = await response.json();
         } else {
             statusMessageEl.hidden = true;
+            allTasks = await sync.json();
         }
-        const response = await fetch(API_URL);
-        if (!response.ok) {
-            throw new Error(`Erreur HTTP ${response.status}`);
-        }
-        allTasks = await response.json();
         populateServerFilter(allTasks);
         applyFilters();
         renderCalendar();

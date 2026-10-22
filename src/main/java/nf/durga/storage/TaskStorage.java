@@ -16,7 +16,7 @@ public interface TaskStorage {
 
     List<VersionedTask> load();
 
-    void refresh();
+    List<VersionedTask> refresh();
 
     String actor();
 

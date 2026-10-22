@@ -368,6 +368,9 @@ The SPA refreshes on reload and exposes a refresh button. Normal API reads use
 the local checkout. With a valid checkout but unreachable remote, startup logs
 a warning and local reads remain available; refresh and shared writes report
 the synchronization error. Shared writes must synchronize successfully first.
+Each load reads all Task blob revisions with a single Git tree command, not
+one process per Task. The SPA uses the Tasks returned by refresh directly;
+it requests a separate local read only when synchronization fails.
 
 One business checkpoint creates at most one commit: create, update/patch,
 status/work-status, archive, delete, milestone, or a meeting due-date batch.
@@ -451,6 +454,19 @@ There are no Durga user accounts, sessions, roles, or permissions.
 
 The application is available at `http://localhost:8080/` (SPA) and
 `http://localhost:8080/api/tasks` (API).
+
+### Debugging in IntelliJ IDEA
+
+Shared configurations are in `.run`. Stop any existing Durga process first,
+and ensure the IDE inherits `DURGA_TASKS_REPOSITORY`.
+
+1. Select **Durga - Gradle bootRun (debug)** and click **Run** (not Debug).
+   `bootRun --debug-jvm` waits at `Listening for transport dt_socket at address: 5005`.
+2. Select **Durga - Attach debugger (localhost:5005)** and click **Debug**.
+   The application starts and Java breakpoints become active.
+
+The debug listener is local-only. Stopping the attached debugger does not
+necessarily stop Gradle; stop the Gradle run separately when finished.
 
 ## Tests and build
 

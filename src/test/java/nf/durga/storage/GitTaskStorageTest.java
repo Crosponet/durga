@@ -65,6 +65,46 @@ class GitTaskStorageTest {
     }
 
     @Test
+    void loadReadsAllBlobRevisionsWithOneGitCommand() {
+        var a = create("a");
+        var b = create("b");
+        first.close();
+        List<List<String>> commands = new java.util.ArrayList<>();
+        first = new GitTaskStorage(fixture.first, new GitClient(fixture.first) {
+            @Override
+            public Result run(String... args) {
+                commands.add(List.of(args));
+                return super.run(args);
+            }
+        });
+        first.init();
+        commands.clear();
+
+        var loaded = first.load();
+
+        assertThat(loaded).extracting(v -> v.task().getId())
+                .containsExactlyInAnyOrder(a.task().getId(), b.task().getId());
+        assertThat(loaded).extracting(TaskStorage.VersionedTask::revision)
+                .containsExactlyInAnyOrder(a.revision(), b.revision());
+        assertThat(commands).hasSize(1);
+        assertThat(commands.getFirst().getFirst()).isEqualTo("ls-tree");
+
+        commands.clear();
+        assertThat(first.refresh()).hasSize(2);
+        assertThat(commands.stream().filter(c -> c.getFirst().equals("ls-tree"))).hasSize(1);
+    }
+
+    @Test
+    void uncommittedTaskDocumentIsRejected() throws Exception {
+        var task = create("a");
+        UUID id = UUID.randomUUID();
+        String json = Files.readString(fixture.first.resolve("tasks").resolve(task.task().getId() + ".json"));
+        Files.writeString(fixture.first.resolve("tasks").resolve(id + ".json"),
+                json.replace(task.task().getId().toString(), id.toString()));
+        assertThatThrownBy(first::load).isInstanceOf(TaskStorageException.class).hasMessageContaining("not committed");
+    }
+
+    @Test
     void independentTaskBlobRevisionsDoNotConflict() {
         var a = create("a");
         var b = create("b");
